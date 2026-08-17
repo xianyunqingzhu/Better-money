@@ -5,7 +5,7 @@ import sqlite3
 
 import httpx
 
-BASE = "http://127.0.0.1:8000"
+BASE = "http://127.0.0.1:8642"
 
 # 生成 1x1 PNG 作为测试图片
 PNG_1PX = base64.b64decode(

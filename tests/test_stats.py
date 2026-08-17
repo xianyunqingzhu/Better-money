@@ -3,7 +3,7 @@ import json
 
 import httpx
 
-BASE = "http://127.0.0.1:8000"
+BASE = "http://127.0.0.1:8642"
 
 seed = [
     ("2026-07-20", 40, "支出", "学习", "书店"),

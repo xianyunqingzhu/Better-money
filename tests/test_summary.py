@@ -5,7 +5,7 @@ from pathlib import Path
 
 import httpx
 
-BASE = "http://127.0.0.1:8000"
+BASE = "http://127.0.0.1:8642"
 
 # 种子数据：本周（08-17 周一）3 笔 + 上周 2 笔
 seed = [

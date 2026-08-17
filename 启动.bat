@@ -19,10 +19,10 @@ if not exist ".venv\Scripts\python.exe" (
 )
 
 echo.
-echo  Better-money 已启动：http://127.0.0.1:8000
+echo  Better-money 已启动：http://127.0.0.1:8642
 echo  关闭本窗口即可停止服务。
 echo.
 ping -n 3 127.0.0.1 >nul
-start "" http://127.0.0.1:8000
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+start "" http://127.0.0.1:8642
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8642
 pause

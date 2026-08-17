@@ -5,7 +5,7 @@ from datetime import date, timedelta
 
 import httpx
 
-BASE = "http://127.0.0.1:8000"
+BASE = "http://127.0.0.1:8642"
 today = date.today().isoformat()
 
 

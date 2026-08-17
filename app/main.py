@@ -1,6 +1,6 @@
 """Better-money 本地服务入口：记账、看板、设置 API。
 
-启动：python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+启动：python -m uvicorn app.main:app --host 127.0.0.1 --port 8642
 或双击 启动.bat。
 """
 import io
