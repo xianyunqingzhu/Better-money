@@ -55,7 +55,7 @@ async function delTx(id) {
 
 function showAiBanner(msg) {
   const b = $('#ai-banner');
-  b.textContent = '⚠️ AI 不可用：' + msg + '（可继续手动记账，解决后自动恢复）';
+  b.textContent = 'AI 不可用：' + msg + '（可继续手动记账，解决后自动恢复）';
   b.classList.remove('hidden');
 }
 
@@ -78,7 +78,7 @@ async function aiSubmit() {
     if (!res.ok) {
       if (data.error === 'ai_unavailable') {
         showAiBanner(data.message || '请检查网络或 API 配置');
-        $('#ai-result').innerHTML = '<div class="res-err">⚠️ 这次没解析成功，原文已保留，AI 恢复后可重试；也可先手动记账。</div>';
+        $('#ai-result').innerHTML = '<div class="res-err">这次没解析成功，原文已保留，AI 恢复后可重试；也可先手动记账。</div>';
       } else {
         $('#ai-result').innerHTML = '<div class="res-err">解析失败（' + (data.message || '未知原因') + '），可重试或手动记账</div>';
       }
@@ -88,23 +88,23 @@ async function aiSubmit() {
     let html = '';
     if (data.saved > 0) {
       $('#ai-text').value = '';
-      html += '<div class="res-ok">✔ 已入账 ' + data.saved + ' 笔</div>';
+      html += '<div class="res-ok">已入账 ' + data.saved + ' 笔</div>';
       refresh();
     } else if (data.message) {
       html += '<div class="res-err">' + data.message + '</div>';
     }
     if (data.skipped && data.skipped.length) {
-      html += '<div class="res-warn">⏭ 跳过 ' + data.skipped.length + ' 笔疑似重复（日期+金额+商家相同）</div>';
+      html += '<div class="res-warn">跳过 ' + data.skipped.length + ' 笔疑似重复（日期+金额+商家相同）</div>';
     }
     if (data.questions && data.questions.length) {
-      html += '<div class="res-q">❓ ' + data.questions.join('<br>❓ ') + '</div>';
+      html += '<div class="res-q">需要补充：' + data.questions.join('<br>') + '</div>';
     }
     $('#ai-result').innerHTML = html;
   } catch (e) {
     showAiBanner('网络错误');
-    $('#ai-result').innerHTML = '<div class="res-err">⚠️ 请求失败，请检查本地服务是否在运行</div>';
+    $('#ai-result').innerHTML = '<div class="res-err">请求失败，请检查本地服务是否在运行</div>';
   } finally {
-    btn.disabled = false; btn.textContent = '🤖 智能解析入账';
+    btn.disabled = false; btn.textContent = '智能解析入账';
   }
 }
 
@@ -113,6 +113,7 @@ async function aiSubmit() {
 const TYPE_ORDER = ['支出', '收入', '退款', '取现', '转账', '还款'];
 let confirmData = [];     // 当前确认面板的原始 items（含 line_items）
 let confirmSource = '确认面板';
+let confirmPreviousFocus = null;
 
 function esc(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
@@ -133,7 +134,7 @@ async function uploadImages() {
     if (!res.ok) {
       if (data.error === 'ai_unavailable') {
         showAiBanner(data.message || '请检查网络或 API 配置');
-        $('#ai-result').innerHTML = '<div class="res-err">⚠️ 图片已保存，AI 恢复后可重试；也可手动记账。</div>';
+        $('#ai-result').innerHTML = '<div class="res-err">图片已保存，AI 恢复后可重试；也可手动记账。</div>';
       } else {
         $('#ai-result').innerHTML = '<div class="res-err">识别失败：' + (data.message || '未知原因') + '</div>';
       }
@@ -141,7 +142,7 @@ async function uploadImages() {
     }
     hideAiBanner();
     let extra = '';
-    if (data.failed) extra = `<div class="res-warn">⚠️ ${data.failed} 张图片识别失败，其余已识别。</div>`;
+    if (data.failed) extra = `<div class="res-warn">${data.failed} 张图片识别失败，其余已识别。</div>`;
     if (data.items && data.items.length) {
       confirmSource = '小票';
       openConfirm(data.items, data.questions || []);
@@ -149,13 +150,13 @@ async function uploadImages() {
     } else {
       $('#ai-result').innerHTML = extra + '<div class="res-err">没识别出可入账的条目，可手动记账</div>';
       if (data.questions && data.questions.length) {
-        $('#ai-result').innerHTML += '<div class="res-q">❓ ' + data.questions.join('<br>❓ ') + '</div>';
+        $('#ai-result').innerHTML += '<div class="res-q">需要补充：' + data.questions.join('<br>') + '</div>';
       }
     }
   } catch (e) {
     showAiBanner('网络错误');
   } finally {
-    btn.disabled = false; btn.textContent = '📷 上传截图/小票';
+    btn.disabled = false; btn.textContent = '上传截图 / 小票';
     $('#img-file').value = '';
   }
 }
@@ -185,7 +186,7 @@ async function importCsv() {
   } catch (e) {
     showAiBanner('网络错误');
   } finally {
-    btn.disabled = false; btn.textContent = '📄 导入账单 CSV';
+    btn.disabled = false; btn.textContent = '导入账单 CSV';
     $('#csv-file').value = '';
   }
 }
@@ -206,11 +207,12 @@ function confirmRowHtml(it, i) {
     <td><input class="cf-merchant" value="${esc(it.merchant)}"></td>
     <td><input class="cf-amount" type="number" step="0.01" min="0" value="${it.amount}"></td>
     <td><input class="cf-note" value="${esc(it.note)}"></td>
-    <td><button class="del-btn cf-del" title="删除此行">✕</button></td>
+    <td><button class="del-btn cf-del" title="删除此行" aria-label="删除此行">&times;</button></td>
   </tr>`;
 }
 
 function openConfirm(items, questions) {
+  confirmPreviousFocus = document.activeElement;
   confirmData = items;
   const tbody = $('#confirm-table tbody');
   tbody.innerHTML = items.map((it, i) => confirmRowHtml(it, i)).join('');
@@ -223,17 +225,22 @@ function openConfirm(items, questions) {
   });
   const q = $('#confirm-questions');
   if (questions && questions.length) {
-    q.innerHTML = '❓ ' + questions.join('<br>❓ ');
+    q.innerHTML = '需要补充：' + questions.join('<br>');
     q.classList.remove('hidden');
   } else {
     q.classList.add('hidden');
   }
   $('#confirm-count').textContent = `（${items.length} 条，可修改后确认）`;
   $('#confirm-modal').classList.remove('hidden');
+  requestAnimationFrame(() => $('#confirm-close').focus());
 }
 
 function closeConfirm() {
   $('#confirm-modal').classList.add('hidden');
+  if (confirmPreviousFocus && typeof confirmPreviousFocus.focus === 'function') {
+    confirmPreviousFocus.focus();
+  }
+  confirmPreviousFocus = null;
 }
 
 async function confirmSave() {
@@ -262,9 +269,9 @@ async function confirmSave() {
   });
   const data = await res.json();
   closeConfirm();
-  let html = '<div class="res-ok">✔ 已入账 ' + data.saved + ' 笔</div>';
+  let html = '<div class="res-ok">已入账 ' + data.saved + ' 笔</div>';
   if (data.skipped && data.skipped.length) {
-    html += '<div class="res-warn">⏭ 跳过 ' + data.skipped.length + ' 笔疑似重复（日期+金额+商家相同）</div>';
+    html += '<div class="res-warn">跳过 ' + data.skipped.length + ' 笔疑似重复（日期+金额+商家相同）</div>';
   }
   $('#ai-result').innerHTML = html;
   refresh();
@@ -272,8 +279,26 @@ async function confirmSave() {
 
 /* ---------- 图表看板（M4） ---------- */
 
-const PALETTE = ['#10b981', '#f59e0b', '#3b82f6', '#8b5cf6', '#ef4444',
-  '#14b8a6', '#f97316', '#64748b'];
+const PALETTE = ['#147d64', '#d68b3c', '#426da9', '#70589c', '#c84f3b',
+  '#2f918c', '#bd6d51', '#7b8a84'];
+const CHART_TEXT = '#687a72';
+const CHART_LINE = '#e3ebe7';
+const CHART_AXIS = '#9aaba3';
+const REDUCE_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const tooltipStyle = {
+  backgroundColor: '#17241f', borderWidth: 0, padding: [8, 10],
+  textStyle: { color: '#ffffff', fontSize: 12 },
+};
+const categoryAxisStyle = {
+  axisLine: { lineStyle: { color: CHART_LINE } },
+  axisTick: { show: false },
+  axisLabel: { color: CHART_TEXT, fontSize: 10 },
+};
+const valueAxisStyle = {
+  axisLine: { show: false }, axisTick: { show: false },
+  axisLabel: { color: CHART_TEXT, fontSize: 10 },
+  splitLine: { lineStyle: { color: CHART_LINE, type: 'dashed' } },
+};
 let charts = {};
 let currentMonth = '';
 
@@ -302,52 +327,59 @@ async function loadStats() {
   // 分类占比（环形）
   const hasCat = s.category && s.category.length;
   charts['chart-cat'].setOption({
-    tooltip: { trigger: 'item', formatter: '{b}：¥{c}（{d}%）' },
-    legend: { bottom: 0, type: 'scroll', textStyle: { fontSize: 11 } },
+    animation: !REDUCE_MOTION,
+    tooltip: { ...tooltipStyle, trigger: 'item', formatter: '{b}：¥{c}（{d}%）' },
+    legend: { bottom: 0, type: 'scroll', itemWidth: 8, itemHeight: 8, textStyle: { color: CHART_TEXT, fontSize: 11 } },
     color: PALETTE,
     series: [{
-      type: 'pie', radius: ['42%', '68%'], center: ['50%', '44%'],
-      label: { formatter: '{b}\n{d}%', fontSize: 11 },
+      type: 'pie', radius: ['48%', '70%'], center: ['50%', '43%'],
+      itemStyle: { borderColor: '#ffffff', borderWidth: 3, borderRadius: 4 },
+      label: { formatter: '{b}\n{d}%', color: CHART_TEXT, fontSize: 10, lineHeight: 15 },
+      labelLine: { lineStyle: { color: CHART_AXIS } },
+      emphasis: { scaleSize: 4 },
       data: hasCat ? s.category : [],
     }],
     graphic: hasCat ? [] : [{
       type: 'text', left: 'center', top: 'middle',
-      style: { text: '本月暂无支出记录', fill: '#9ca3af', fontSize: 13 },
+      style: { text: '本月暂无支出记录', fill: CHART_AXIS, fontSize: 12 },
     }],
   }, true);
 
   // 近30天趋势（折线）
   charts['chart-daily'].setOption({
-    tooltip: { trigger: 'axis' },
-    grid: { left: 42, right: 12, top: 24, bottom: 24 },
+    animation: !REDUCE_MOTION,
+    tooltip: { ...tooltipStyle, trigger: 'axis', valueFormatter: (value) => `¥${Number(value).toFixed(2)}` },
+    grid: { left: 46, right: 12, top: 24, bottom: 26 },
     xAxis: {
       type: 'category',
       data: s.daily.map((d) => d.date.slice(5)),
-      axisLabel: { fontSize: 10, interval: 4 },
+      ...categoryAxisStyle,
+      axisLabel: { ...categoryAxisStyle.axisLabel, interval: 4 },
     },
-    yAxis: { type: 'value', axisLabel: { fontSize: 10 } },
+    yAxis: { type: 'value', ...valueAxisStyle },
     series: [{
       type: 'line', smooth: true, symbol: 'none',
       data: s.daily.map((d) => d.value),
-      lineStyle: { color: PALETTE[0], width: 2 },
-      areaStyle: { color: 'rgba(16,185,129,.12)' },
+      lineStyle: { color: PALETTE[0], width: 2.5 },
+      areaStyle: { color: 'rgba(20,125,100,.10)' },
       itemStyle: { color: PALETTE[0] },
     }],
   }, true);
 
   // 近8周对比（柱状）
   charts['chart-week'].setOption({
-    tooltip: { trigger: 'axis' },
-    grid: { left: 42, right: 12, top: 24, bottom: 24 },
+    animation: !REDUCE_MOTION,
+    tooltip: { ...tooltipStyle, trigger: 'axis', valueFormatter: (value) => `¥${Number(value).toFixed(2)}` },
+    grid: { left: 46, right: 12, top: 24, bottom: 26 },
     xAxis: {
       type: 'category', data: s.weekly.map((w) => w.label),
-      axisLabel: { fontSize: 10 },
+      ...categoryAxisStyle,
     },
-    yAxis: { type: 'value', axisLabel: { fontSize: 10 } },
+    yAxis: { type: 'value', ...valueAxisStyle },
     series: [{
       type: 'bar', data: s.weekly.map((w) => w.value),
-      itemStyle: { color: PALETTE[2], borderRadius: [4, 4, 0, 0] },
-      barMaxWidth: 28,
+      itemStyle: { color: PALETTE[2], borderRadius: [5, 5, 2, 2] },
+      barMaxWidth: 24,
     }],
   }, true);
 
@@ -358,20 +390,21 @@ async function loadStats() {
   if (active && active.price > 0) {
     const pct = Math.min(100, (active.saved / active.price) * 100);
     charts['chart-goal'].setOption({
+      animation: !REDUCE_MOTION,
       title: {
         text: active.name,
         subtext: `已存 ¥${active.saved.toFixed(2)} / ¥${active.price.toFixed(2)}`,
         left: 'center', top: '4%',
-        textStyle: { fontSize: 13 },
-        subtextStyle: { fontSize: 11, color: '#6b7280' },
+        textStyle: { color: '#34463f', fontSize: 13, fontWeight: 600 },
+        subtextStyle: { fontSize: 11, color: CHART_TEXT },
       },
       series: [{
         type: 'gauge', startAngle: 90, endAngle: -270, min: 0, max: 100,
         pointer: { show: false },
-        progress: { show: true, width: 14, itemStyle: { color: PALETTE[0] } },
-        axisLine: { lineStyle: { width: 14, color: [[1, '#e5e7eb']] } },
+        progress: { show: true, roundCap: true, width: 12, itemStyle: { color: PALETTE[0] } },
+        axisLine: { roundCap: true, lineStyle: { width: 12, color: [[1, '#e8efec']] } },
         axisTick: { show: false }, splitLine: { show: false }, axisLabel: { show: false },
-        detail: { formatter: '{value}%', fontSize: 18, offsetCenter: [0, '62%'] },
+        detail: { formatter: '{value}%', color: '#17241f', fontSize: 19, fontWeight: 700, offsetCenter: [0, '62%'] },
         data: [{ value: Math.round(pct * 10) / 10 }],
       }],
     }, true);
@@ -380,7 +413,7 @@ async function loadStats() {
       title: { show: false }, series: [],
       graphic: [{
         type: 'text', left: 'center', top: 'middle',
-        style: { text: '暂无目标\n（目标清单功能即将上线）', fill: '#9ca3af', fontSize: 13, lineHeight: 20 },
+        style: { text: '暂无目标\n去目标清单创建第一个计划', fill: CHART_AXIS, fontSize: 12, lineHeight: 20, textAlign: 'center' },
       }],
     }, true);
   }
@@ -408,7 +441,7 @@ async function loadSummaries() {
   const txs = await (await fetch('/api/transactions?limit=1')).json();
   const hint = $('#summary-hint');
   if (!hasWeek && txs.length) {
-    hint.textContent = '💡 本周有记账记录但还没有周总结，点「生成本周总结」看看吧。';
+    hint.textContent = '本周有记账记录但还没有周总结，点「生成本周总结」看看吧。';
     hint.classList.remove('hidden');
   } else {
     hint.classList.add('hidden');
@@ -424,7 +457,7 @@ function renderSummary(s) {
     ? '<span class="tag" style="color:#b45309;background:#fef3c7">账目已修改，可能过期</span>' : '';
   return `<div class="summary-card">
     <div class="summary-head">
-      <b>${s.period_type === '周' ? '📅 周总结' : '🗓 月总结'}（${s.period_start} ~ ${s.period_end}）</b>
+      <b>${s.period_type === '周' ? '周总结' : '月总结'}（${s.period_start} ~ ${s.period_end}）</b>
       ${badge}
       <span class="muted">${s.created_at}</span>
     </div>
@@ -435,7 +468,7 @@ function renderSummary(s) {
 
 async function genSummary(type) {
   const btn = type === '周' ? $('#gen-week') : $('#gen-month');
-  const label = type === '周' ? '✍️ 生成本周总结' : '✍️ 生成本月总结';
+  const label = type === '周' ? '生成本周总结' : '生成本月总结';
   btn.disabled = true; btn.textContent = '写作中…';
   try {
     const res = await fetch('/api/summaries/generate', {
@@ -477,7 +510,7 @@ async function loadGoals() {
   }
   const winsBox = $('#wins-box');
   winsBox.innerHTML = wins.total > 0
-    ? `🏆 本月通过「冷静期」忍住了 <b>${wins.count}</b> 次冲动消费，共省下 <b>¥${wins.total.toFixed(2)}</b>`
+    ? `本月通过「冷静期」忍住了 <b>${wins.count}</b> 次冲动消费，共省下 <b>¥${wins.total.toFixed(2)}</b>`
     : '';
 }
 
@@ -491,8 +524,8 @@ function goalCard(g) {
   let cdActions = '';
   if (g.status === '冷静期' && g.cooldown_until && g.cooldown_until <= today) {
     cdActions = `<div class="cooldown-actions">冷静期已过，还想要吗？
-      <button class="ghost" data-act="want" data-id="${g.id}">😍 还想要</button>
-      <button class="ghost" data-act="pass" data-id="${g.id}">🧘 不要了（省下 ¥${g.price.toFixed(2)}）</button>
+      <button class="ghost" data-act="want" data-id="${g.id}">还想要</button>
+      <button class="ghost" data-act="pass" data-id="${g.id}">不要了（省下 ¥${g.price.toFixed(2)}）</button>
     </div>`;
   }
   const ops = [];
@@ -653,7 +686,7 @@ async function loadHistory() {
   const pending = await (await fetch('/api/pending')).json();
   const pb = $('#pending-box');
   if (pending.length) {
-    pb.innerHTML = `<b>⚠️ 有 ${pending.length} 条 AI 解析失败的内容已保留（不会丢）：</b><ul>${pending.map((p) =>
+    pb.innerHTML = `<b>有 ${pending.length} 条 AI 解析失败的内容已保留（不会丢）：</b><ul>${pending.map((p) =>
       `<li>${esc(p.raw_text || p.image_path || '（图片）')} <button class="mini danger" data-pdel="${p.id}">删除</button></li>`
     ).join('')}</ul>`;
     pb.classList.remove('hidden');
@@ -736,9 +769,9 @@ async function loadSummary() {
   if (s.monthly_budget > 0 && ratio >= 0.8) {
     if (ratio >= 1) {
       const over = s.month_expense - s.monthly_budget;
-      banner.innerHTML = `🚨 本月预算已超支 ¥${over.toFixed(2)}！建议暂停奶茶/娱乐等非必需消费，月末总结会给出复盘。`;
+      banner.innerHTML = `本月预算已超支 ¥${over.toFixed(2)}！建议暂停奶茶/娱乐等非必需消费，月末总结会给出复盘。`;
     } else {
-      banner.innerHTML = `⚠️ 本月预算已用 ${Math.round(ratio * 100)}%，剩余 ${s.days_left} 天日均需控制在 ¥${Math.max(s.today_spendable, 0).toFixed(2)} 内。`;
+      banner.innerHTML = `本月预算已用 ${Math.round(ratio * 100)}%，剩余 ${s.days_left} 天日均需控制在 ¥${Math.max(s.today_spendable, 0).toFixed(2)} 内。`;
     }
     banner.classList.remove('hidden');
   } else {
@@ -761,7 +794,7 @@ async function loadTransactions() {
       <td>${t.merchant || '—'}</td>
       <td class="${cls}">${sign}¥${t.amount.toFixed(2)}</td>
       <td>${t.note || ''}</td>
-      <td><button class="del-btn" title="删除" data-id="${t.id}">✕</button></td>
+      <td><button class="del-btn" title="删除" aria-label="删除 ${t.date} 的${t.category}记录" data-id="${t.id}">&times;</button></td>
     </tr>`;
   }).join('');
   tbody.querySelectorAll('.del-btn').forEach((b) =>
@@ -801,16 +834,30 @@ async function saveSettings() {
 /* ---------- 标签切换 ---------- */
 
 function bindTabs() {
-  document.querySelectorAll('.tab').forEach((btn) => {
+  const tabs = [...document.querySelectorAll('.tab')];
+  tabs.forEach((btn, index) => {
     btn.addEventListener('click', () => {
-      document.querySelectorAll('.tab').forEach((b) => b.classList.remove('active'));
+      tabs.forEach((b) => b.classList.remove('active'));
       document.querySelectorAll('.panel').forEach((p) => p.classList.remove('active'));
+      tabs.forEach((b) => b.setAttribute('aria-selected', 'false'));
       btn.classList.add('active');
+      btn.setAttribute('aria-selected', 'true');
       document.getElementById(btn.dataset.tab).classList.add('active');
       if (btn.dataset.tab === 'summaries') loadSummaries();
       if (btn.dataset.tab === 'goals') loadGoals();
       if (btn.dataset.tab === 'settings') loadReconcile();
       if (btn.dataset.tab === 'history') loadHistory();
+    });
+    btn.addEventListener('keydown', (e) => {
+      let nextIndex = null;
+      if (e.key === 'ArrowRight') nextIndex = (index + 1) % tabs.length;
+      if (e.key === 'ArrowLeft') nextIndex = (index - 1 + tabs.length) % tabs.length;
+      if (e.key === 'Home') nextIndex = 0;
+      if (e.key === 'End') nextIndex = tabs.length - 1;
+      if (nextIndex === null) return;
+      e.preventDefault();
+      tabs[nextIndex].focus();
+      tabs[nextIndex].click();
     });
   });
 }
@@ -834,6 +881,12 @@ async function init() {
   $('#confirm-save').addEventListener('click', confirmSave);
   $('#confirm-cancel').addEventListener('click', closeConfirm);
   $('#confirm-close').addEventListener('click', closeConfirm);
+  $('#confirm-modal').addEventListener('click', (e) => {
+    if (e.target === $('#confirm-modal')) closeConfirm();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !$('#confirm-modal').classList.contains('hidden')) closeConfirm();
+  });
   $('#month-select').addEventListener('change', (e) => {
     currentMonth = e.target.value;
     loadStats();
@@ -853,9 +906,9 @@ async function init() {
   await refresh();
   const health = await (await fetch('/api/health')).json();
   if (health.ai_configured) {
-    $('#ai-note').textContent = '🤖 AI 已就绪：支持多笔记账、收入识别、AA 分摊（如「聚餐 200 4人AA」）、日期补记（如「昨天午饭 15」）。';
+    $('#ai-note').textContent = 'AI 已就绪：支持多笔记账、收入识别、AA 分摊（如「聚餐 200 4人AA」）、日期补记（如「昨天午饭 15」）。';
   } else {
-    $('#ai-note').textContent = '💡 尚未配置 AI：到「设置」页填 API Key 后即可智能记账；当前可用下方手动记账。';
+    $('#ai-note').textContent = '尚未配置 AI：到「设置」页填 API Key 后即可智能记账；当前可用下方手动记账。';
   }
 }
 

@@ -8,37 +8,46 @@
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <header>
-    <div class="brand">🐷 Better-money</div>
-    <nav>
-      <button class="tab active" data-tab="dashboard">看板</button>
-      <button class="tab" data-tab="goals">目标清单</button>
-      <button class="tab" data-tab="summaries">总结</button>
-      <button class="tab" data-tab="history">历史明细</button>
-      <button class="tab" data-tab="settings">设置</button>
-    </nav>
-    <div id="ai-banner" class="ai-banner hidden">
-      ⚠️ AI 不可用：请检查网络或 API 配置（期间可手动记账，解决后自动恢复）
+  <a class="skip-link" href="#main-content">跳到主要内容</a>
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="brand">
+        <span class="brand-mark"><img src="/static/favicon.ico" width="28" height="28" alt=""></span>
+        <span class="brand-copy"><strong>Better-money</strong><small>AI 记账与储蓄助手</small></span>
+      </div>
+      <nav aria-label="主导航" role="tablist">
+        <button id="tab-dashboard" class="tab active" data-tab="dashboard" role="tab" aria-controls="dashboard" aria-selected="true">看板</button>
+        <button id="tab-goals" class="tab" data-tab="goals" role="tab" aria-controls="goals" aria-selected="false">目标清单</button>
+        <button id="tab-summaries" class="tab" data-tab="summaries" role="tab" aria-controls="summaries" aria-selected="false">总结</button>
+        <button id="tab-history" class="tab" data-tab="history" role="tab" aria-controls="history" aria-selected="false">历史明细</button>
+        <button id="tab-settings" class="tab" data-tab="settings" role="tab" aria-controls="settings" aria-selected="false">设置</button>
+      </nav>
+    </div>
+    <div id="ai-banner" class="ai-banner hidden" role="status" aria-live="polite">
+      AI 不可用：请检查网络或 API 配置（期间可手动记账，解决后自动恢复）
     </div>
   </header>
 
-  <main>
+  <main id="main-content">
     <!-- 看板：左记账右汇总 -->
-    <div id="dashboard" class="panel active grid">
+    <div id="dashboard" class="panel active grid" role="tabpanel" aria-labelledby="tab-dashboard">
       <section class="entry">
-        <h2>📝 记账</h2>
+        <div class="section-heading">
+          <div><span class="eyebrow">QUICK ENTRY</span><h2>记一笔</h2></div>
+          <span class="status-pill">本地账本</span>
+        </div>
         <div class="form-row"><label>日期（忘记了可拨回补记）</label><input type="date" id="tx-date"></div>
-        <div id="ai-note" class="ai-note">💡 检查 AI 状态中…</div>
+        <div id="ai-note" class="ai-note" role="status">检查 AI 状态中…</div>
         <textarea id="ai-text" rows="5" placeholder="今天花了什么，一口气写下来，例如：
 午饭食堂 15
 奶茶 12
 聚餐 200 4人AA
 昨天兼职 200"></textarea>
-        <button id="ai-submit" class="primary">🤖 智能解析入账</button>
-        <div id="ai-result"></div>
+        <button id="ai-submit" class="primary">智能解析入账</button>
+        <div id="ai-result" aria-live="polite"></div>
         <div class="btn-row">
-          <button id="img-btn" class="ghost">📷 上传截图/小票</button>
-          <button id="csv-btn" class="ghost">📄 导入账单 CSV</button>
+          <button id="img-btn" class="ghost">上传截图 / 小票</button>
+          <button id="csv-btn" class="ghost">导入账单 CSV</button>
         </div>
         <div class="form-row"><label>图片说明（AA/请客等，选填）</label><input type="text" id="img-note" placeholder="如：4人AA / AA后我付了50"></div>
         <input type="file" id="img-file" accept="image/*" multiple hidden>
@@ -58,16 +67,16 @@
         <div class="form-row"><label>分类</label><select id="tx-category"></select></div>
         <div class="form-row"><label>商家</label><input type="text" id="tx-merchant" placeholder="食堂 / 淘宝 / 罗森"></div>
         <div class="form-row"><label>备注</label><input type="text" id="tx-note" placeholder="选填"></div>
-        <button id="tx-submit" class="primary">✔ 记一笔</button>
+        <button id="tx-submit" class="primary">确认记账</button>
       </section>
 
       <section class="dash">
         <div class="cards">
-          <div class="card"><span>当前余额</span><b id="c-balance">--</b></div>
-          <div class="card"><span>本月支出</span><b id="c-expense">--</b></div>
-          <div class="card"><span>本月收入</span><b id="c-income">--</b></div>
-          <div class="card"><span>月预算</span><b id="c-budget">--</b></div>
-          <div class="card warn"><span>今日可花</span><b id="c-spendable">--</b></div>
+          <div class="card card-balance"><span>当前余额</span><b id="c-balance">--</b></div>
+          <div class="card card-expense"><span>本月支出</span><b id="c-expense">--</b></div>
+          <div class="card card-income"><span>本月收入</span><b id="c-income">--</b></div>
+          <div class="card card-budget"><span>月预算</span><b id="c-budget">--</b></div>
+          <div class="card card-spendable warn"><span>今日可花</span><b id="c-spendable">--</b></div>
         </div>
         <div id="budget-banner" class="res-warn hidden"></div>
         <div class="month-bar">
@@ -75,47 +84,49 @@
           <select id="month-select"></select>
         </div>
         <div class="charts-grid">
-          <div class="chart-card"><h3>🍩 分类占比</h3><div id="chart-cat" class="chart"></div></div>
-          <div class="chart-card"><h3>📈 支出趋势（近30天）</h3><div id="chart-daily" class="chart"></div></div>
-          <div class="chart-card"><h3>📊 周对比（近8周）</h3><div id="chart-week" class="chart"></div></div>
-          <div class="chart-card"><h3>🎯 目标进度</h3><div id="chart-goal" class="chart"></div></div>
+          <div class="chart-card"><h3>分类占比</h3><div id="chart-cat" class="chart" role="img" aria-label="本月支出分类占比图"></div></div>
+          <div class="chart-card"><h3>支出趋势 <span>近 30 天</span></h3><div id="chart-daily" class="chart" role="img" aria-label="近三十天支出趋势图"></div></div>
+          <div class="chart-card"><h3>周对比 <span>近 8 周</span></h3><div id="chart-week" class="chart" role="img" aria-label="近八周支出对比图"></div></div>
+          <div class="chart-card"><h3>目标进度</h3><div id="chart-goal" class="chart" role="img" aria-label="当前储蓄目标进度图"></div></div>
         </div>
         <h3>最近记录</h3>
-        <table id="recent">
-          <thead><tr><th>日期</th><th>类型</th><th>分类</th><th>商家</th><th>金额</th><th>备注</th><th></th></tr></thead>
-          <tbody></tbody>
-        </table>
+        <div class="table-scroll">
+          <table id="recent">
+            <thead><tr><th>日期</th><th>类型</th><th>分类</th><th>商家</th><th>金额</th><th>备注</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
       </section>
     </div>
 
     <!-- 目标清单 -->
-    <section id="goals" class="panel">
-      <h2>🎯 目标清单（愿望清单）</h2>
+    <section id="goals" class="panel" role="tabpanel" aria-labelledby="tab-goals">
+      <div class="page-title"><span class="eyebrow">SAVING GOALS</span><h2>目标清单</h2><p>把想买的东西放进计划里，让每一次忍住都有进度。</p></div>
       <div class="goal-new">
         <input id="g-name" placeholder="想买什么（如：降噪耳机）">
         <input id="g-price" type="number" step="0.01" min="0" placeholder="价格（元）">
         <input id="g-expected" type="date">
         <input id="g-note" placeholder="备注/链接（选填）">
-        <button id="g-add" class="primary small">➕ 加入愿望清单</button>
+        <button id="g-add" class="primary small">加入愿望清单</button>
       </div>
       <div id="wins-box" class="wins"></div>
       <div id="goal-list"></div>
     </section>
 
     <!-- 总结 -->
-    <section id="summaries" class="panel">
-      <h2>📝 周 / 月总结</h2>
+    <section id="summaries" class="panel" role="tabpanel" aria-labelledby="tab-summaries">
+      <div class="page-title"><span class="eyebrow">MONEY REVIEW</span><h2>周 / 月总结</h2><p>从真实流水里回看消费习惯和储蓄进展。</p></div>
       <div class="btn-row" style="max-width: 440px">
-        <button id="gen-week" class="ghost">✍️ 生成本周总结</button>
-        <button id="gen-month" class="ghost">✍️ 生成本月总结</button>
+        <button id="gen-week" class="ghost">生成本周总结</button>
+        <button id="gen-month" class="ghost">生成本月总结</button>
       </div>
       <div id="summary-hint" class="ai-note hidden"></div>
       <div id="summary-list"></div>
     </section>
 
     <!-- 历史明细 -->
-    <section id="history" class="panel">
-      <h2>🗂 历史明细</h2>
+    <section id="history" class="panel" role="tabpanel" aria-labelledby="tab-history">
+      <div class="page-title"><span class="eyebrow">TRANSACTIONS</span><h2>历史明细</h2><p>按月检查每一笔收入与支出。</p></div>
       <div class="month-bar">
         <span>月份</span>
         <select id="hist-month"></select>
@@ -131,8 +142,8 @@
     </section>
 
     <!-- 设置 -->
-    <section id="settings" class="panel">
-      <h2>⚙️ 设置</h2>
+    <section id="settings" class="panel" role="tabpanel" aria-labelledby="tab-settings">
+      <div class="page-title"><span class="eyebrow">PREFERENCES</span><h2>设置</h2><p>管理预算、储蓄规则与本地 AI 服务。</p></div>
       <div class="settings-grid">
         <div class="form-row"><label>初始余额（元）</label><input type="number" step="0.01" id="s-initial"></div>
         <div class="form-row"><label>月预算（元）</label><input type="number" step="0.01" id="s-budget"></div>
@@ -147,26 +158,26 @@
       </div>
       <button id="s-save" class="primary">保存设置</button>
       <div class="reconcile-box">
-        <h3>🔍 对账校准</h3>
+        <h3>对账校准</h3>
         <p class="muted">账本余额 <b id="r-ledger">--</b>。输入真实余额（微信+支付宝+银行卡+现金加总），差额自动记为调整。</p>
         <div class="form-row" style="max-width: 240px"><label>真实余额（元）</label><input type="number" step="0.01" id="r-actual"></div>
         <button id="r-do" class="ghost">校准</button>
         <span id="r-result" class="muted"></span>
       </div>
       <div class="reconcile-box">
-        <h3>💾 数据导出与备份</h3>
+        <h3>数据导出与备份</h3>
         <p class="muted">每次启动自动备份数据库到 data/backups/（保留最近 30 份）。也可手动下载：</p>
         <div class="btn-row" style="max-width: 480px">
-          <a class="ghost link" href="/api/export/transactions.csv">⬇ 导出全部交易 CSV</a>
-          <a class="ghost link" href="/api/export/backup.db">⬇ 下载完整备份</a>
+          <a class="ghost link" href="/api/export/transactions.csv">导出全部交易 CSV</a>
+          <a class="ghost link" href="/api/export/backup.db">下载完整备份</a>
         </div>
       </div>
       <div class="reconcile-box">
-        <h3>📖 快速上手</h3>
+        <h3>快速上手</h3>
         <ol class="help-list">
           <li>设置页填好「初始余额」「月预算」「API Key」（AI 用哪家填哪家）</li>
           <li>每晚把当天花销一口气打进智能记账框（支持多笔、AA、补记）</li>
-          <li>购物小票/支付截图用「📷 上传」；月底漏记用「📄 导入账单 CSV」</li>
+          <li>购物小票或支付截图用「上传截图 / 小票」；月底漏记用「导入账单 CSV」</li>
           <li>想买的东西加进目标清单，冷静期帮你拦住冲动消费；收入自动存 30% 进第一目标</li>
           <li>周末点「生成本周总结」，月末点「生成本月总结」</li>
           <li>数据全在 data/ 文件夹：数据库、截图原件、备份都在里面，整个文件夹拷走即可迁移</li>
@@ -177,11 +188,11 @@
   </main>
 
   <!-- 确认面板：识别结果先预览、可改可删，确认后才入账 -->
-  <div id="confirm-modal" class="modal hidden">
+  <div id="confirm-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
     <div class="modal-box">
       <div class="modal-head">
-        <h2>📋 确认入账 <span id="confirm-count"></span></h2>
-        <button id="confirm-close" class="del-btn" style="font-size:18px">✕</button>
+        <h2 id="confirm-title">确认入账 <span id="confirm-count"></span></h2>
+        <button id="confirm-close" class="del-btn modal-close" aria-label="关闭确认面板">&times;</button>
       </div>
       <div id="confirm-questions" class="res-q hidden"></div>
       <div class="modal-scroll">
@@ -192,7 +203,7 @@
       </div>
       <div class="modal-actions">
         <button id="confirm-cancel" class="ghost">取消</button>
-        <button id="confirm-save" class="primary small">✔ 确认入账</button>
+        <button id="confirm-save" class="primary small">确认入账</button>
       </div>
     </div>
   </div>
