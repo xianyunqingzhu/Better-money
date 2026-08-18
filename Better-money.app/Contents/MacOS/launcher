@@ -1,0 +1,6 @@
+#!/bin/bash
+# Better-money .app 启动入口（由 tools/make_mac_app.sh 生成）
+# 项目目录 = .app 所在文件夹的上一级（.app 必须放在项目文件夹里）
+PROJ="$(cd "$(dirname "$0")/../../.." && pwd)"
+# 无终端环境运行时必须重定向 stdout（uvicorn 无 stdout 会崩溃）
+exec "$PROJ/启动.command" < /dev/null > "$PROJ/data/server.log" 2>&1

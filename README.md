@@ -6,7 +6,7 @@
   <img alt="SQLite" src="https://img.shields.io/badge/SQLite-003B57?style=flat-square&logo=sqlite&logoColor=white">
   <img alt="ECharts" src="https://img.shields.io/badge/ECharts-5.5-AA344D?style=flat-square">
   <img alt="AI" src="https://img.shields.io/badge/AI-OpenAI%2FDeepSeek%2FQwen%E5%8F%AF%E5%88%87%E6%8D%A2-412991?style=flat-square">
-  <img alt="Platform" src="https://img.shields.io/badge/Windows-%E6%9C%AC%E5%9C%B0%E8%BF%90%E8%A1%8C-0078D6?style=flat-square&logo=windows&logoColor=white">
+  <img alt="Platform" src="https://img.shields.io/badge/Windows%2FmacOS-%E6%9C%AC%E5%9C%B0%E8%BF%90%E8%A1%8C-0078D6?style=flat-square&logo=windows&logoColor=white">
   <img alt="Progress" src="https://img.shields.io/badge/M1--M7-%E5%85%A8%E9%83%A8%E5%AE%8C%E6%88%90-success?style=flat-square">
   <img alt="Last Commit" src="https://img.shields.io/github/last-commit/xianyunqingzhu/Better-money?style=flat-square">
   <img alt="Stars" src="https://img.shields.io/github/stars/xianyunqingzhu/Better-money?style=flat-square">
@@ -19,11 +19,20 @@
 
 ## 快速开始
 
+### Windows
+
 1. 双击 `启动.bat`
    - 首次运行会自动创建虚拟环境并安装依赖（需要联网）
 2. 浏览器自动打开 http://127.0.0.1:8642
 3. 到「设置」页填写：初始余额、月预算、收入自动存比例、总结语气
 4. 开始记账。关闭命令行窗口即停止服务。
+
+### macOS
+
+1. 双击 `启动.command`（首次运行自动创建虚拟环境并安装依赖，需要联网与 Python 3.10+）
+2. 浏览器自动打开 http://127.0.0.1:8642，关闭终端窗口即停止服务
+3. 或双击 `Better-money.app`（无窗口后台运行，停止用 `停止服务.command`；可右键"制作替身"把替身拖入 Dock）
+4. 若提示"无法打开，因为来自身份不明的开发者"：右键文件 → 打开；或终端运行 `xattr -dr com.apple.quarantine 项目文件夹路径`
 
 手动启动（可选）：
 
@@ -66,9 +75,12 @@ Better-money/
 │   └── config.py       # 配置（data/config.json）
 ├── static/             # 网页前端（HTML/CSS/JS + ECharts 本地库）
 ├── tests/              # 六套端到端测试 + 回归脚本 + mock LLM
+├── tools/              # 图标生成、mac .app 打包脚本
 ├── data/               # 运行时生成：数据库、配置、图片、备份（不提交）
+├── 启动.bat / 停止服务.bat        # Windows 启动/停止
+├── 启动.command / 停止服务.command # macOS 启动/停止
+├── Better-money.app/   # macOS 应用包（可拖入 Dock）
 ├── requirements.txt
-├── 启动.bat
 ├── 设计文档.md
 ├── 使用说明.md
 └── README.md
