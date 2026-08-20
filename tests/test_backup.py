@@ -5,6 +5,8 @@ from dataclasses import FrozenInstanceError
 from datetime import datetime, timedelta
 import json
 from pathlib import Path
+import runpy
+import shutil
 import sqlite3
 import zipfile
 
@@ -19,7 +21,7 @@ from app.backup import (
     restore_backup,
 )
 from app.db import init_db
-from app.migrations import CURRENT_SCHEMA_VERSION
+from app.migrations import BASE_SCHEMA, CURRENT_SCHEMA_VERSION
 from app.paths import get_paths
 from app.version import APP_VERSION
 
@@ -270,6 +272,108 @@ def test_restore_rejects_unsafe_zip_member_without_writing_it(app_home):
     assert not (app_home.parent / "escape.txt").exists()
 
 
+@pytest.mark.parametrize(
+    "unsafe_leaf",
+    [
+        "{drive}:../config.json",
+        "receipt.txt:secret",
+        "CON.txt",
+        "receipt.txt.",
+        "receipt.txt ",
+    ],
+)
+def test_inspect_rejects_windows_alias_and_device_image_members(
+    app_home, unsafe_leaf
+):
+    _seed_live_transaction("windows-path")
+    valid = create_backup("manual", include_images=True)
+    drive = Path(app_home).drive.rstrip(":") or "C"
+    malicious = _rewrite_archive(
+        valid,
+        app_home / "windows-alias.zip",
+        extra_members={
+            f"data/images/{unsafe_leaf.format(drive=drive)}": b"malicious"
+        },
+    )
+
+    with pytest.raises(ValueError, match="unsafe|member|Windows"):
+        inspect_backup(malicious)
+
+
+def test_inspect_rejects_members_with_duplicate_windows_targets(app_home):
+    _seed_live_transaction("duplicate-target")
+    (get_paths().images_dir / "receipt.txt").write_text("trusted", encoding="utf-8")
+    valid = create_backup("manual", include_images=True)
+    duplicate = _rewrite_archive(
+        valid,
+        app_home / "duplicate-target.zip",
+        extra_members={"data/images/RECEIPT.TXT": b"replacement"},
+    )
+
+    with pytest.raises(ValueError, match="duplicate"):
+        inspect_backup(duplicate)
+
+
+def test_restore_uses_the_same_private_archive_snapshot_after_inspection(
+    app_home, monkeypatch
+):
+    _seed_live_transaction("trusted-snapshot")
+    trusted = create_backup("trusted")
+    _seed_live_transaction("replacement-source")
+    replacement = create_backup("replacement")
+    supplied_path = app_home / "supplied.zip"
+    shutil.copy2(trusted, supplied_path)
+    replacement_bytes = replacement.read_bytes()
+    _seed_live_transaction("current-safe")
+    real_inspect = backup_module.inspect_backup
+    swapped = False
+
+    def inspect_then_replace_supplied_path(path):
+        nonlocal swapped
+        manifest = real_inspect(path)
+        if not swapped:
+            supplied_path.write_bytes(replacement_bytes)
+            swapped = True
+        return manifest
+
+    monkeypatch.setattr(backup_module, "inspect_backup", inspect_then_replace_supplied_path)
+
+    restore_backup(supplied_path)
+
+    assert swapped is True
+    assert _live_notes() == ["trusted-snapshot"]
+
+
+def test_restore_rechecks_extracted_database_schema_against_inspected_manifest(
+    app_home, monkeypatch
+):
+    _seed_live_transaction("trusted-schema")
+    archive = create_backup("manual")
+    legacy_db = app_home / "legacy-v1.db"
+    with closing(sqlite3.connect(legacy_db)) as conn, conn:
+        conn.executescript(BASE_SCHEMA)
+        conn.execute("PRAGMA user_version = 1")
+    _seed_live_transaction("current-safe")
+    before = get_paths().db_path.read_bytes()
+    real_extract = backup_module._extract_declared_members
+
+    def extract_then_substitute_database(source, staging, manifest):
+        real_extract(source, staging, manifest)
+        shutil.copy2(legacy_db, staging / "data" / "better_money.db")
+
+    monkeypatch.setattr(
+        backup_module,
+        "_extract_declared_members",
+        extract_then_substitute_database,
+    )
+
+    with pytest.raises(ValueError, match="schema"):
+        restore_backup(archive)
+
+    assert get_paths().db_path.read_bytes() == before
+    assert _live_notes() == ["current-safe"]
+
+
 def test_restore_rolls_back_database_and_config_when_final_replace_fails(
     app_home, monkeypatch
 ):
@@ -384,3 +488,13 @@ def test_automatic_retention_only_removes_verified_automatic_zip_archives(app_ho
     assert pre_operation.exists()
     assert raw_pre_migration.exists()
     assert invalid_zip.exists()
+
+
+def test_m7_backup_policy_check_runs_independently_in_isolated_home(app_home):
+    _seed_live_transaction("m7-policy")
+    script = Path(__file__).with_name("test_m7.py")
+
+    namespace = runpy.run_path(str(script))
+    namespace["check_backup_policy"]()
+
+    assert get_paths().root == app_home

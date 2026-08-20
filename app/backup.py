@@ -5,8 +5,9 @@ from contextlib import closing
 from dataclasses import asdict, dataclass
 from datetime import datetime
 import json
+import ntpath
 import os
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 import re
 import shutil
 import sqlite3
@@ -39,6 +40,19 @@ _MANIFEST_FIELDS = {
     "includes_images",
 }
 _REASON_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+_WINDOWS_RESERVED_NAMES = {
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
+    "CONIN$",
+    "CONOUT$",
+    *(f"COM{number}" for number in range(1, 10)),
+    *(f"LPT{number}" for number in range(1, 10)),
+    *(f"COM{number}" for number in "¹²³"),
+    *(f"LPT{number}" for number in "¹²³"),
+}
+_WINDOWS_INVALID_CHARACTERS = frozenset('<>:"|?*')
 
 
 @dataclass(frozen=True)
@@ -88,17 +102,31 @@ def _manifest_from_dict(value: Any) -> BackupManifest:
     return BackupManifest(**value)
 
 
-def _is_safe_member(info: zipfile.ZipInfo) -> bool:
+def _windows_member_parts(info: zipfile.ZipInfo) -> tuple[str, ...]:
     name = info.filename
     if not name or "\\" in name or info.is_dir() or info.flag_bits & 0x1:
-        return False
-    path = PurePosixPath(name)
-    if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
-        return False
-    if path.parts and ":" in path.parts[0]:
-        return False
+        raise ValueError("invalid ZIP member form")
+    parts = tuple(name.split("/"))
+    if any(part in {"", ".", ".."} for part in parts):
+        raise ValueError("invalid ZIP member component")
+    for part in parts:
+        if part.endswith((".", " ")):
+            raise ValueError("Windows strips trailing dots and spaces")
+        if any(ord(character) < 32 for character in part):
+            raise ValueError("Windows control character in member")
+        if _WINDOWS_INVALID_CHARACTERS.intersection(part):
+            raise ValueError("Windows-invalid character in member")
+        device_stem = part.split(".", 1)[0].upper()
+        if device_stem in _WINDOWS_RESERVED_NAMES:
+            raise ValueError("Windows reserved device name in member")
     file_type = (info.external_attr >> 16) & 0o170000
-    return file_type != 0o120000
+    if file_type == 0o120000:
+        raise ValueError("symbolic-link member")
+    return parts
+
+
+def _windows_target_key(parts: tuple[str, ...]) -> str:
+    return ntpath.normcase(ntpath.normpath(ntpath.join(*parts)))
 
 
 def _validated_infos(
@@ -106,18 +134,32 @@ def _validated_infos(
     manifest: BackupManifest | None = None,
 ) -> dict[str, zipfile.ZipInfo]:
     infos: dict[str, zipfile.ZipInfo] = {}
+    target_names: dict[str, str] = {}
+    member_parts: dict[str, tuple[str, ...]] = {}
     for info in archive.infolist():
-        if not _is_safe_member(info):
-            raise ValueError(f"backup contains unsafe member: {info.filename!r}")
+        try:
+            parts = _windows_member_parts(info)
+        except ValueError as exc:
+            raise ValueError(
+                f"backup contains unsafe member: {info.filename!r}"
+            ) from exc
         if info.filename in infos:
             raise ValueError(f"backup contains duplicate member: {info.filename!r}")
+        target_key = _windows_target_key(parts)
+        if target_key in target_names:
+            raise ValueError(
+                "backup contains duplicate Windows target: "
+                f"{target_names[target_key]!r} and {info.filename!r}"
+            )
+        target_names[target_key] = info.filename
         infos[info.filename] = info
+        member_parts[info.filename] = parts
     if not _REQUIRED_MEMBERS <= set(infos):
         raise ValueError("backup is missing a required member")
-    for name in infos:
+    for name, parts in member_parts.items():
         if name in _REQUIRED_MEMBERS:
             continue
-        if not name.startswith("data/images/"):
+        if len(parts) < 3 or parts[:2] != ("data", "images"):
             raise ValueError(f"backup contains undeclared member: {name!r}")
         if manifest is not None and not manifest.includes_images:
             raise ValueError("backup contains images not declared by its manifest")
@@ -280,13 +322,30 @@ def _extract_declared_members(archive: Path, staging: Path, manifest: BackupMani
     with zipfile.ZipFile(archive) as zipped:
         infos = _validated_infos(zipped, manifest)
         staging_root = staging.resolve()
+        images_root = (staging / "data" / "images").resolve()
+        windows_images_root = ntpath.normcase(ntpath.abspath(str(images_root)))
         for name, info in infos.items():
             if name == "manifest.json":
                 continue
-            destination = staging.joinpath(*PurePosixPath(name).parts)
+            parts = _windows_member_parts(info)
+            destination = staging.joinpath(*parts)
             resolved = destination.resolve()
             if not resolved.is_relative_to(staging_root):
                 raise ValueError(f"backup contains unsafe member: {name!r}")
+            if name not in _REQUIRED_MEMBERS:
+                windows_destination = ntpath.normcase(ntpath.abspath(str(resolved)))
+                try:
+                    common = ntpath.commonpath(
+                        [windows_images_root, windows_destination]
+                    )
+                except ValueError as exc:
+                    raise ValueError(
+                        f"backup image member escapes image directory: {name!r}"
+                    ) from exc
+                if common != windows_images_root or windows_destination == common:
+                    raise ValueError(
+                        f"backup image member escapes image directory: {name!r}"
+                    )
             resolved.parent.mkdir(parents=True, exist_ok=True)
             with zipped.open(info) as source, resolved.open("wb") as output:
                 shutil.copyfileobj(source, output)
@@ -294,6 +353,11 @@ def _extract_declared_members(archive: Path, staging: Path, manifest: BackupMani
 
 def _validate_staged_data(staging: Path, manifest: BackupManifest) -> None:
     database_path = staging / "data" / "better_money.db"
+    extracted_schema_version = _database_manifest_version(database_path)
+    if extracted_schema_version != manifest.schema_version:
+        raise ValueError(
+            "extracted database schema does not match the inspected manifest"
+        )
     with closing(sqlite3.connect(database_path)) as conn:
         migrate_database(conn)
         valid, detail = database_integrity(conn)
@@ -351,15 +415,21 @@ def _replace_live_data(staging: Path, includes_images: bool) -> None:
 def restore_backup(archive: Path) -> None:
     """Restore a verified backup via staging and rollback-capable replacements."""
     archive = Path(archive)
-    manifest = inspect_backup(archive)
-    create_backup("pre-restore")
     paths = get_paths()
     paths.ensure_directories()
     with tempfile.TemporaryDirectory(
         prefix="better-money-restore-", dir=paths.runtime_dir
     ) as temporary:
         staging = Path(temporary)
-        _extract_declared_members(archive, staging, manifest)
+        archive_snapshot = staging / "supplied-backup.zip"
+        try:
+            with archive.open("rb") as source, archive_snapshot.open("xb") as target:
+                shutil.copyfileobj(source, target)
+        except OSError as exc:
+            raise ValueError("backup archive could not be copied for restore") from exc
+        manifest = inspect_backup(archive_snapshot)
+        create_backup("pre-restore")
+        _extract_declared_members(archive_snapshot, staging, manifest)
         _validate_staged_data(staging, manifest)
         _replace_live_data(staging, manifest.includes_images)
 
