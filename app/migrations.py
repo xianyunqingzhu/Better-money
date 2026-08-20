@@ -128,10 +128,28 @@ MIGRATIONS: tuple[tuple[int, Callable[[sqlite3.Connection], None]], ...] = (
 def migrate_database(conn: sqlite3.Connection) -> None:
     """Apply each pending schema version atomically without replacing the database."""
     _require_database_integrity(conn)
-    with conn:
+    owns_transaction = not conn.in_transaction
+    if owns_transaction:
+        conn.execute("BEGIN")
+    else:
+        conn.execute("SAVEPOINT migrate_database")
+
+    try:
         current_version = conn.execute("PRAGMA user_version").fetchone()[0]
         for version, migration in MIGRATIONS:
             if current_version < version:
                 migration(conn)
                 conn.execute(f"PRAGMA user_version = {version}")
         _require_database_integrity(conn)
+    except Exception:
+        if owns_transaction:
+            conn.rollback()
+        else:
+            conn.execute("ROLLBACK TO SAVEPOINT migrate_database")
+            conn.execute("RELEASE SAVEPOINT migrate_database")
+        raise
+    else:
+        if owns_transaction:
+            conn.commit()
+        else:
+            conn.execute("RELEASE SAVEPOINT migrate_database")
