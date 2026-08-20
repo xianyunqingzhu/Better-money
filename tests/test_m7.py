@@ -48,12 +48,15 @@ print("backup download ok, bytes:", len(r.content))
 
 # 4) 启动备份文件存在且保留策略有效（直接调 backup 模块）
 from app import backup  # noqa: E402
+from app.paths import get_paths  # noqa: E402
+
+backups_dir = get_paths().backups_dir
 for i in range(35):
-    dest = backup.BACKUPS_DIR / f"better_money-20200101-{i:06d}.db"
+    dest = backups_dir / f"better_money-20200101-{i:06d}.db"
     dest.write_bytes(b"x")
 p = backup.backup_database()
 assert p and Path(p).exists()
-n = len(list(backup.BACKUPS_DIR.glob("better_money-*.db")))
+n = len(list(backups_dir.glob("better_money-*.db")))
 assert n == 30, f"应保留 30 份，实际 {n}"
 print("backup prune ok, kept:", n)
 
