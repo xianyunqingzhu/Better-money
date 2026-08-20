@@ -3,3 +3,4 @@ data/
 __pycache__/
 *.pyc
 tests/xiaopiao.png
+.worktrees/
