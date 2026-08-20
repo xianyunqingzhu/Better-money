@@ -2,7 +2,7 @@
 import sqlite3
 from datetime import datetime
 
-from app.config import DB_PATH
+from app.paths import get_paths
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS transactions (
@@ -72,16 +72,21 @@ CREATE TABLE IF NOT EXISTS pending_items (
 
 
 def get_conn() -> sqlite3.Connection:
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    paths = get_paths()
+    paths.data_dir.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(paths.db_path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
 
 def init_db() -> None:
-    with get_conn() as conn:
+    conn = get_conn()
+    try:
         conn.executescript(SCHEMA)
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def now_str() -> str:

@@ -15,13 +15,13 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from app import ai, backup, db, importers, summarizer
-from app.config import IMAGES_DIR, load_config, save_config
-
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+from app.config import load_config, save_config
+from app.paths import get_paths, resource_root
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    get_paths().ensure_directories()
     db.init_db()
     backup.backup_database()
     yield
@@ -206,10 +206,10 @@ def export_transactions_csv():
 @app.get("/api/export/backup.db")
 def export_backup_db():
     import shutil
-    from app.config import BACKUPS_DIR, DB_PATH
-    BACKUPS_DIR.mkdir(parents=True, exist_ok=True)
-    dest = BACKUPS_DIR / "manual-export.db"
-    shutil.copy2(DB_PATH, dest)
+    paths = get_paths()
+    paths.backups_dir.mkdir(parents=True, exist_ok=True)
+    dest = paths.backups_dir / "manual-export.db"
+    shutil.copy2(paths.db_path, dest)
     return FileResponse(dest, media_type="application/octet-stream",
                         filename="better-money-backup.db")
 
@@ -286,7 +286,7 @@ async def upload_images(
     """保存图片 → 视觉模型逐张识别 → 返回待确认条目（不直接入账）。"""
     if not files:
         return JSONResponse(status_code=400, content={"error": "empty", "message": "没有文件"})
-    day_dir = IMAGES_DIR / (date or "misc")
+    day_dir = get_paths().images_dir / (date or "misc")
     day_dir.mkdir(parents=True, exist_ok=True)
     paths = []
     for f in files:
@@ -833,9 +833,9 @@ def set_settings(patch: dict):
 
 # ---------- 前端 ----------
 
-app.mount("/static", StaticFiles(directory=PROJECT_ROOT / "static"), name="static")
+app.mount("/static", StaticFiles(directory=resource_root() / "static"), name="static")
 
 
 @app.get("/")
 def index():
-    return FileResponse(PROJECT_ROOT / "static" / "index.html")
+    return FileResponse(resource_root() / "static" / "index.html")

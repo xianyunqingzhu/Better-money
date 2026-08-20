@@ -12,8 +12,9 @@ from datetime import date, timedelta
 from openai import OpenAI
 
 from app import db
-from app.config import IMAGES_DIR, load_config
+from app.config import load_config
 from app.ai import AIUnavailableError
+from app.paths import get_paths
 
 TONE_DESC = {
     "朋友": "语气轻松自然，像室友聊天，可以开无伤大雅的小玩笑。",
@@ -213,7 +214,7 @@ def _gen_image(period_type: str) -> str:
         b64 = resp.data[0].b64_json if resp.data else ""
         if not b64:
             return ""
-        d = IMAGES_DIR / "summaries"
+        d = get_paths().images_dir / "summaries"
         d.mkdir(parents=True, exist_ok=True)
         p = d / f"{uuid.uuid4().hex}.png"
         p.write_bytes(base64.b64decode(b64))
