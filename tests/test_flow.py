@@ -1,14 +1,25 @@
 """M2 端到端自测：通过 httpx 走真实 HTTP 接口，验证解析入账、AA、去重、提问。"""
 import json
+import os
+from pathlib import Path
 import sqlite3
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import httpx
 
-BASE = "http://127.0.0.1:8642"
+from app.paths import get_paths
+
+BASE = os.environ.get("BETTER_MONEY_TEST_BASE_URL", "http://127.0.0.1:8642")
+
+# 共享持久客户端：Windows 上每新建一次 httpx 客户端都要重建 SSL 上下文
+# （即使访问 http），证书库枚举偶发卡顿；复用一个客户端只建一次。
+_client = httpx.Client(base_url=BASE, timeout=30)
 
 
 def post(path, payload):
-    r = httpx.post(BASE + path, json=payload, timeout=30)
+    r = _client.post(path, json=payload)
     return r.status_code, r.json()
 
 
@@ -28,7 +39,7 @@ assert status == 200 and data2["saved"] == 0 and data2["skipped"], data2
 print("dedup ok:", json.dumps(data2, ensure_ascii=False))
 
 # 3) 数据库检查
-conn = sqlite3.connect("data/better_money.db")
+conn = sqlite3.connect(get_paths().db_path)
 rows = conn.execute(
     "SELECT date, amount, type, category, merchant, note, estimated FROM transactions ORDER BY id"
 ).fetchall()
@@ -43,7 +54,7 @@ assert inc[0] == "2026-08-16", "昨天兼职应记到 08-16"
 conn.close()
 
 # 4) 汇总联动
-s = httpx.get(BASE + "/api/summary", timeout=10).json()
+s = _client.get("/api/summary").json()
 print("summary:", s)
 assert s["month_income"] == 200.0 and s["month_expense"] == 107.0, s
 print("M2 E2E ALL OK")

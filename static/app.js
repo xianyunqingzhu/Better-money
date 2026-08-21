@@ -11,6 +11,35 @@ const CATS = {
 
 const $ = (s) => document.querySelector(s);
 
+function showToast(message, type = 'info') {
+  let box = document.getElementById('toast-box');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'toast-box';
+    document.body.appendChild(box);
+  }
+  const toast = document.createElement('div');
+  toast.className = 'toast toast-' + type;
+  toast.textContent = message;
+  box.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add('show'));
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => toast.remove(), 300);
+  }, 3200);
+}
+
+async function requestJson(url, options = {}) {
+  const res = await fetch(url, options);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data.message || '请求失败');
+    err.data = data;
+    throw err;
+  }
+  return data;
+}
+
 /* ---------- 记账 ---------- */
 
 function fillCategories() {
@@ -303,7 +332,7 @@ let charts = {};
 let currentMonth = '';
 
 function initCharts() {
-  ['chart-cat', 'chart-daily', 'chart-week', 'chart-goal'].forEach((id) => {
+  ['chart-cat', 'chart-daily', 'chart-week'].forEach((id) => {
     charts[id] = echarts.init(document.getElementById(id));
   });
   window.addEventListener('resize', () => Object.values(charts).forEach((c) => c.resize()));
@@ -383,65 +412,137 @@ async function loadStats() {
     }],
   }, true);
 
-  // 目标进度环
+  // 多目标进度列表
   const goals = await (await fetch('/api/goals')).json();
-  const active = goals.find((g) => ['冷静期', '进行中'].includes(g.status))
-    || goals.find((g) => g.status === '已暂停');
-  if (active && active.price > 0) {
-    const pct = Math.min(100, (active.saved / active.price) * 100);
-    charts['chart-goal'].setOption({
-      animation: !REDUCE_MOTION,
-      title: {
-        text: active.name,
-        subtext: `已存 ¥${active.saved.toFixed(2)} / ¥${active.price.toFixed(2)}`,
-        left: 'center', top: '4%',
-        textStyle: { color: '#34463f', fontSize: 13, fontWeight: 600 },
-        subtextStyle: { fontSize: 11, color: CHART_TEXT },
-      },
-      series: [{
-        type: 'gauge', startAngle: 90, endAngle: -270, min: 0, max: 100,
-        pointer: { show: false },
-        progress: { show: true, roundCap: true, width: 12, itemStyle: { color: PALETTE[0] } },
-        axisLine: { roundCap: true, lineStyle: { width: 12, color: [[1, '#e8efec']] } },
-        axisTick: { show: false }, splitLine: { show: false }, axisLabel: { show: false },
-        detail: { formatter: '{value}%', color: '#17241f', fontSize: 19, fontWeight: 700, offsetCenter: [0, '62%'] },
-        data: [{ value: Math.round(pct * 10) / 10 }],
-      }],
-    }, true);
-  } else {
-    charts['chart-goal'].setOption({
-      title: { show: false }, series: [],
-      graphic: [{
-        type: 'text', left: 'center', top: 'middle',
-        style: { text: '暂无目标\n去目标清单创建第一个计划', fill: CHART_AXIS, fontSize: 12, lineHeight: 20, textAlign: 'center' },
-      }],
-    }, true);
+  renderGoalProgressList(goals);
+}
+
+function renderGoalProgressList(goals) {
+  const box = $('#goal-progress-list');
+  const visible = goals.filter((g) => ['冷静期', '进行中', '已暂停'].includes(g.status));
+  if (!visible.length) {
+    box.innerHTML = '<p class="goal-empty">暂无目标<br>去目标清单创建第一个计划</p>';
+    return;
   }
+  box.innerHTML = visible.map((g, i) => {
+    const saved = Number(g.saved) || 0;
+    const target = Number(g.price) || 0;
+    const remaining = Math.max(0, target - saved);
+    const pct = target > 0 ? Math.min(100, saved / target * 100) : 0;
+    const paused = g.status === '已暂停';
+    const isFirst = i === 0;
+    return '<div class="goal-progress-item' + (paused ? ' paused' : '') + '">' +
+      '<div class="goal-progress-head">' +
+        '<span class="goal-progress-name">' + esc(g.name) + '</span>' +
+        (isFirst ? '<span class="tag income">当前优先目标</span>' : '') +
+        '<span class="goal-progress-status">' + g.status + '</span>' +
+      '</div>' +
+      '<div class="goal-progress-bar"><div style="width:' + pct.toFixed(2) + '%"></div></div>' +
+      '<div class="goal-progress-meta">' +
+        '<span class="goal-amount">已存 <b>¥' + saved.toFixed(2) + '</b></span>' +
+        '<span class="goal-amount">需要 <b>¥' + target.toFixed(2) + '</b></span>' +
+        '<span class="goal-amount">还差 <b>¥' + remaining.toFixed(2) + '</b></span>' +
+        '<span class="goal-pct">' + Math.round(pct) + '%</span>' +
+      '</div>' +
+    '</div>';
+  }).join('');
 }
 
 /* ---------- 周/月总结（M5） ---------- */
 
-function currentMondayISO() {
-  const d = new Date();
-  const monday = new Date(d);
-  monday.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-  return monday.toISOString().slice(0, 10);
+function localISO(d) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function weekRange(offsetWeeks) {
+  const now = new Date();
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - ((now.getDay() + 6) % 7) + offsetWeeks * 7);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  return [localISO(monday), localISO(sunday)];
+}
+
+function monthRange(offsetMonths) {
+  const now = new Date();
+  const first = new Date(now.getFullYear(), now.getMonth() + offsetMonths, 1);
+  const last = new Date(now.getFullYear(), now.getMonth() + offsetMonths + 1, 0);
+  return [localISO(first), localISO(last)];
+}
+
+const SUMMARY_PRESETS = {
+  this_week: () => weekRange(0),
+  last_week: () => weekRange(-1),
+  this_month: () => monthRange(0),
+  last_month: () => monthRange(-1),
+};
+
+// 重新生成意图：非空表示针对该总结 id 覆盖写作
+let summaryOverwriteId = null;
+
+function openSummaryModal(preset = 'this_week') {
+  $('#summary-modal').classList.remove('hidden');
+  $('#summary-modal-title').textContent = summaryOverwriteId !== null ? '重新生成总结' : '生成总结';
+  $('#summary-submit').textContent = summaryOverwriteId !== null ? '重新写作' : '开始写作';
+  if (preset !== 'custom') {
+    const [start, end] = SUMMARY_PRESETS[preset]();
+    $('#summary-start').value = start;
+    $('#summary-end').value = end;
+  } else {
+    $('#summary-start').focus();
+  }
+  hideSummaryRangeError();
+}
+
+function closeSummaryModal() {
+  $('#summary-modal').classList.add('hidden');
+  summaryOverwriteId = null;
+}
+
+function summaryType() {
+  const el = document.querySelector('input[name="summary-type"]:checked');
+  return el ? el.value : '周';
+}
+
+function validateSummaryRange(start, end) {
+  if (!start || !end) return '请选择开始和结束日期';
+  if (start > end) return '开始日期不能晚于结束日期';
+  const days = Math.round((new Date(end) - new Date(start)) / 86400000) + 1;
+  if (days > 366) return '区间最长 366 天';
+  return '';
+}
+
+function showSummaryRangeError(message) {
+  const box = $('#summary-range-error');
+  box.textContent = message;
+  box.classList.remove('hidden');
+}
+
+function hideSummaryRangeError() {
+  $('#summary-range-error').classList.add('hidden');
 }
 
 async function loadSummaries() {
   const list = await (await fetch('/api/summaries')).json();
   const box = $('#summary-list');
   if (!list.length) {
-    box.innerHTML = '<p class="todo-note">还没有总结，点上面按钮生成第一篇吧。</p>';
+    box.innerHTML = '<p class="todo-note">还没有总结，点上面的「生成总结」选择区间，生成第一篇吧。</p>';
   } else {
     box.innerHTML = list.map(renderSummary).join('');
+    box.querySelectorAll('[data-summary-act]').forEach((b) =>
+      b.addEventListener('click', () => {
+        const id = parseInt(b.dataset.summaryId, 10);
+        if (b.dataset.summaryAct === 'delete') deleteSummary(id);
+        else regenerateSummary(id);
+      }));
   }
   // 轻提示：有账但本周总结缺失
-  const hasWeek = list.some((s) => s.period_type === '周' && s.period_start === currentMondayISO());
+  const hasWeek = list.some((s) => s.period_type === '周' && s.period_start === weekRange(0)[0]);
   const txs = await (await fetch('/api/transactions?limit=1')).json();
   const hint = $('#summary-hint');
   if (!hasWeek && txs.length) {
-    hint.textContent = '本周有记账记录但还没有周总结，点「生成本周总结」看看吧。';
+    hint.textContent = '本周有记账记录但还没有周总结，点「生成总结」看看吧。';
     hint.classList.remove('hidden');
   } else {
     hint.classList.add('hidden');
@@ -455,29 +556,48 @@ function renderSummary(s) {
     ? `<img src="/api/summary_image/${s.id}" class="summary-img" alt="总结配图">` : '';
   const badge = s.expired
     ? '<span class="tag" style="color:#b45309;background:#fef3c7">账目已修改，可能过期</span>' : '';
+  const actions = `<div class="summary-actions">
+      <button type="button" class="mini" data-summary-act="regen" data-summary-id="${s.id}">重新生成</button>
+      <button type="button" class="mini danger" data-summary-act="delete" data-summary-id="${s.id}">删除</button>
+    </div>`;
   return `<div class="summary-card">
     <div class="summary-head">
       <b>${s.period_type === '周' ? '周总结' : '月总结'}（${s.period_start} ~ ${s.period_end}）</b>
       ${badge}
       <span class="muted">${s.created_at}</span>
+      ${actions}
     </div>
     ${img}
     <div class="summary-body">${paras}</div>
   </div>`;
 }
 
-async function genSummary(type) {
-  const btn = type === '周' ? $('#gen-week') : $('#gen-month');
-  const label = type === '周' ? '生成本周总结' : '生成本月总结';
+async function submitSummary(forceOverwrite = false) {
+  const start = $('#summary-start').value;
+  const end = $('#summary-end').value;
+  const error = validateSummaryRange(start, end);
+  if (error) { showSummaryRangeError(error); return; }
+  hideSummaryRangeError();
+  const type = summaryType();
+  const overwrite = forceOverwrite || summaryOverwriteId !== null;
+  const btn = $('#summary-submit');
   btn.disabled = true; btn.textContent = '写作中…';
   try {
     const res = await fetch('/api/summaries/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ period_type: type }),
+      body: JSON.stringify({ period_type: type, period_start: start, period_end: end, overwrite }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
+      if (data.error === 'summary_exists' && !forceOverwrite) {
+        summaryOverwriteId = data.summary_id;
+        const label = type === '周' ? '周总结' : '月总结';
+        if (confirm(`这个区间已经有${label}（${start} ~ ${end}）。\n是否覆盖原总结，重新写作？`)) {
+          await submitSummary(true);
+        }
+        return;
+      }
       if (data.error === 'ai_unavailable') {
         showAiBanner(data.message || '请检查网络或 API 配置');
         alert('生成失败：' + (data.message || 'AI 不可用'));
@@ -487,12 +607,41 @@ async function genSummary(type) {
       return;
     }
     hideAiBanner();
+    closeSummaryModal();
+    showToast(data.overwritten ? '总结已覆盖更新' : '总结已生成', 'success');
     await loadSummaries();
   } catch (e) {
     showAiBanner('网络错误');
+    alert('生成失败：网络错误');
   } finally {
-    btn.disabled = false; btn.textContent = label;
+    btn.disabled = false;
+    btn.textContent = summaryOverwriteId !== null ? '重新写作' : '开始写作';
   }
+}
+
+async function regenerateSummary(id) {
+  const list = await (await fetch('/api/summaries')).json().catch(() => []);
+  const s = list.find((x) => x.id === id);
+  if (!s) { showToast('总结已经不存在', 'error'); return; }
+  summaryOverwriteId = id;
+  const typeEl = document.querySelector(`input[name="summary-type"][value="${s.period_type}"]`);
+  if (typeEl) typeEl.checked = true;
+  openSummaryModal('custom');
+  $('#summary-start').value = s.period_start;
+  $('#summary-end').value = s.period_end;
+}
+
+async function deleteSummary(id) {
+  const list = await (await fetch('/api/summaries')).json().catch(() => []);
+  const s = list.find((x) => x.id === id);
+  if (!s) { showToast('总结已经不存在', 'error'); return; }
+  const label = s.period_type === '周' ? '周总结' : '月总结';
+  if (!confirm(`删除这份${label}（${s.period_start} ~ ${s.period_end}）？\n账目、目标和余额都不会受影响。`)) return;
+  const res = await fetch(`/api/summaries/${id}`, { method: 'DELETE' });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { showToast(data.message || '删除失败', 'error'); return; }
+  showToast(data.message || '总结已删除', 'success');
+  await loadSummaries();
 }
 
 /* ---------- 目标清单（M6） ---------- */
@@ -606,7 +755,17 @@ async function editGoal(id) {
 }
 
 async function goalAction(id, act) {
-  if (act === 'delete' && !confirm('删除这个目标？')) return;
+  if (act === 'delete') {
+    const goal = (await (await fetch('/api/goals')).json()).find((g) => g.id === id);
+    if (!goal) { showToast('目标已经不存在', 'error'); return; }
+    const message = `删除“${goal.name}”目标？\n其中规划的 ¥${Number(goal.saved).toFixed(2)} 将不再归属于任何目标，但不会改变账本余额。`;
+    if (!confirm(message)) return;
+    const response = await fetch(`/api/goals/${id}`, { method: 'DELETE' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) { showToast(data.message || '删除失败', 'error'); return; }
+    await Promise.all([loadGoals(), loadStats(), loadSummary()]);
+    return;
+  }
   if (act === 'abandon' && !confirm('放弃这个目标？已存金额清零（钱回到可用余额池）。')) return;
   if (act === 'pause' && !confirm('暂停这个目标？已存金额会保留（冻结）。')) return;
   if (act === 'achieve') {
@@ -803,32 +962,340 @@ async function loadTransactions() {
 
 /* ---------- 设置 ---------- */
 
+const AI_PROVIDER_BASES = {
+  'OpenAI': 'https://api.openai.com/v1',
+  'DeepSeek': 'https://api.deepseek.com',
+  'Qwen': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  '自定义': '',
+};
+
 async function loadSettings() {
   const s = await (await fetch('/api/settings')).json();
-  $('#s-initial').value = s.initial_balance;
+  $('#s-initial-display').textContent =
+    '¥' + Number(s.initial_balance || 0).toFixed(2) +
+    '（起始 ' + (s.initial_balance_date || '—') + '）';
   $('#s-budget').value = s.monthly_budget;
   $('#s-ratio').value = s.auto_save_ratio;
   $('#s-tone').value = s.tone;
+  $('#s-ai-provider').value = s.ai_provider || '自定义';
   $('#s-api-base').value = s.api_base;
   $('#s-api-key').value = s.api_key;
+  $('#s-model').value = s.model_text;
+  await Promise.all([loadAdjustments(), loadLatestBackup()]);
 }
 
 async function saveSettings() {
   const payload = {
-    initial_balance: parseFloat($('#s-initial').value) || 0,
     monthly_budget: parseFloat($('#s-budget').value) || 0,
     auto_save_ratio: parseFloat($('#s-ratio').value) || 0,
     tone: $('#s-tone').value,
+    ai_provider: $('#s-ai-provider').value,
     api_base: $('#s-api-base').value.trim(),
     api_key: $('#s-api-key').value.trim(),
+    model_text: $('#s-model').value.trim(),
   };
-  const res = await (await fetch('/api/settings', {
+  const data = await requestJson('/api/settings', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
-  })).json();
-  alert(res.ok ? '已保存' : '保存失败');
-  refresh();
+  }).catch((e) => e.data);
+  if (data && data.ok) {
+    showToast('设置已保存', 'success');
+    refresh();
+  } else {
+    alert((data && data.message) || '保存失败');
+  }
+}
+
+function bindAiProvider(selectSel, baseSel) {
+  $(selectSel).addEventListener('change', () => {
+    const base = AI_PROVIDER_BASES[$(selectSel).value];
+    if (base) $(baseSel).value = base;
+  });
+}
+
+async function testAiConnection(prefix) {
+  const base = $(`#${prefix}-api-base`).value.trim();
+  const key = $(`#${prefix}-ai-key`).value.trim();
+  const model = $(`#${prefix}-model`).value.trim();
+  const result = $(`#${prefix}-ai-result`);
+  result.textContent = '连接测试中…';
+  const data = await requestJson('/api/settings/test-ai', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ api_base: base, api_key: key, model: model }),
+  }).catch((e) => e.data);
+  if (data && data.ok) {
+    result.textContent = '连接成功 ✓';
+  } else {
+    result.textContent = (data && data.message) || '连接失败';
+  }
+}
+
+/* ---------- 对账调整历史 ---------- */
+
+async function loadAdjustments() {
+  const list = await (await fetch('/api/adjustments')).json().catch(() => []);
+  const box = $('#adjustment-list');
+  if (!box) return;
+  if (!list.length) {
+    box.innerHTML = '<p class="todo-note">还没有对账调整。</p>';
+    return;
+  }
+  box.innerHTML = list.map((a) => {
+    const diffCls = Number(a.diff) >= 0 ? 'amt-in' : 'amt-out';
+    const sign = Number(a.diff) >= 0 ? '+' : '';
+    const state = a.reversed_by_id
+      ? '<span class="tag">已撤销</span>'
+      : `<button class="mini" data-reverse-id="${a.id}">撤销</button>`;
+    return `<div class="adjustment-item">
+      <span class="muted">${a.date}</span>
+      <span class="${diffCls}">${sign}¥${Number(a.diff).toFixed(2)}</span>
+      <span>${esc(a.note || '')}</span>
+      ${state}
+    </div>`;
+  }).join('');
+  box.querySelectorAll('[data-reverse-id]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      if (!confirm('撤销这笔对账调整？账本余额会回到校准之前。')) return;
+      const data = await requestJson(`/api/adjustments/${b.dataset.reverseId}/reverse`, {
+        method: 'POST',
+      }).catch((e) => e.data);
+      if (data && data.ok) {
+        showToast('已撤销调整', 'success');
+        await Promise.all([loadAdjustments(), loadReconcile(), refresh()]);
+      } else {
+        alert((data && data.message) || '撤销失败');
+      }
+    }));
+}
+
+/* ---------- 备份控件 ---------- */
+
+async function loadLatestBackup() {
+  const box = $('#s-latest-backup');
+  if (!box) return;
+  const list = await (await fetch('/api/backups')).json().catch(() => []);
+  const exportLink = $('#b-export');
+  if (list.length) {
+    box.textContent = list[0].filename + '（' + list[0].manifest.created_at + '）';
+    exportLink.href = '/api/backups/export?filename=' + encodeURIComponent(list[0].filename);
+  } else {
+    box.textContent = '还没有备份';
+    exportLink.removeAttribute('href');
+  }
+}
+
+async function createBackupNow() {
+  const data = await requestJson('/api/backups/create', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ include_images: true }),
+  }).catch((e) => e.data);
+  if (data && data.filename) {
+    showToast('已创建备份：' + data.filename, 'success');
+    await loadLatestBackup();
+  } else {
+    alert((data && data.message) || '备份失败');
+  }
+}
+
+async function restoreBackupFile(file) {
+  if (!confirm('恢复备份会覆盖当前账本数据（恢复前会自动先做一次安全备份）。确定继续？')) return;
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch('/api/backups/restore', { method: 'POST', body: form });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { alert(data.message || '恢复失败'); return; }
+  showToast('备份恢复完成', 'success');
+  await Promise.all([loadSettings(), refresh()]);
+}
+
+async function openDataFolder() {
+  const data = await requestJson('/api/system/open-data-folder', { method: 'POST' })
+    .catch((e) => e.data);
+  if (!data || !data.ok) {
+    showToast((data && data.message) || '无法打开数据文件夹', 'error');
+  }
+}
+
+async function shutdownService() {
+  if (!confirm('退出服务后需要重新运行启动脚本才能再用。确定退出？')) return;
+  const runtime = await (await fetch('/api/runtime')).json();
+  if (!runtime.control_available) {
+    showToast('开发者模式：请在终端按 Ctrl+C 停止服务', 'info');
+    return;
+  }
+  const res = await fetch('/api/control/shutdown', {
+    method: 'POST',
+    headers: { 'X-Better-Money-Token': runtime.session_token },
+  });
+  if (res.ok) {
+    showToast('服务已退出，可以关闭这个页面了', 'success');
+  } else {
+    showToast('退出失败', 'error');
+  }
+}
+
+/* ---------- 更正初始余额（受保护） ---------- */
+
+async function openCorrectModal() {
+  const s = await (await fetch('/api/settings')).json();
+  $('#correct-date').value = s.initial_balance_date || localISO(new Date());
+  $('#correct-amount').value = Number(s.initial_balance || 0);
+  $('#correct-modal').classList.remove('hidden');
+}
+
+function closeCorrectModal() {
+  $('#correct-modal').classList.add('hidden');
+}
+
+async function correctInitialBalance() {
+  const amount = parseFloat($('#correct-amount').value);
+  const dateStr = $('#correct-date').value;
+  if (isNaN(amount) || !dateStr) { alert('请填写起始日期和余额'); return; }
+  const data = await requestJson('/api/settings/initial-balance', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ initial_balance: amount, initial_balance_date: dateStr }),
+  }).catch((e) => e.data);
+  if (data && data.ok) {
+    closeCorrectModal();
+    showToast(`初始余额已更正为 ¥${amount.toFixed(2)}（已自动创建安全备份）`, 'success');
+    await Promise.all([loadSettings(), refresh()]);
+  } else {
+    alert((data && data.message) || '更正失败');
+  }
+}
+
+/* ---------- 首次引导 ---------- */
+
+let onboardStepNo = 1;
+let onboardMigration = null;
+
+function showOnboarding() {
+  $('#onboarding-modal').classList.remove('hidden');
+  onboardStep(1);
+}
+
+function onboardStep(n) {
+  onboardStepNo = n;
+  for (let i = 1; i <= 4; i++) {
+    document.getElementById('onboard-step-' + i).classList.toggle('hidden', i !== n);
+  }
+  $('#onboard-back').classList.toggle('hidden', n === 1);
+  $('#onboard-next').classList.toggle('hidden', n === 4);
+  $('#onboard-done').classList.toggle('hidden', n !== 4);
+  $('#onboard-skip-ai').classList.toggle('hidden', n !== 4);
+  document.querySelectorAll('[data-onboard-step-ind]').forEach((el) => {
+    el.classList.toggle('active',
+      parseInt(el.dataset.onboardStepInd, 10) === n);
+  });
+}
+
+function onboardNext() {
+  if (onboardStepNo === 1) {
+    if (!$('#onboard-initial-date').value) {
+      $('#onboard-initial-date').value = localISO(new Date());
+    }
+    onboardStep(2);
+  } else if (onboardStepNo === 2) {
+    if (!$('#onboard-initial-date').value) { alert('请选择起始日期'); return; }
+    onboardStep(3);
+  } else if (onboardStepNo === 3) {
+    onboardStep(4);
+  }
+}
+
+async function submitOnboarding(skipAi = false) {
+  const payload = {
+    monthly_budget: parseFloat($('#onboard-budget').value) || 0,
+    auto_save_ratio: parseFloat($('#onboard-ratio').value) || 0,
+  };
+  if (!skipAi) {
+    payload.ai_provider = $('#onboard-ai-provider').value;
+    payload.api_base = $('#onboard-api-base').value.trim();
+    payload.api_key = $('#onboard-ai-key').value.trim();
+    payload.model_text = $('#onboard-model').value.trim();
+  }
+  payload.onboarding_completed = true;
+  const saved = await requestJson('/api/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }).catch((e) => e.data);
+  if (!saved || !saved.ok) { alert((saved && saved.message) || '保存失败'); return; }
+
+  const initial = parseFloat($('#onboard-initial-balance').value);
+  if (!isNaN(initial) && initial > 0) {
+    const balance = await requestJson('/api/settings/initial-balance', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        initial_balance: initial,
+        initial_balance_date: $('#onboard-initial-date').value,
+      }),
+    }).catch((e) => e.data);
+    if (!balance || !balance.ok) { alert((balance && balance.message) || '初始余额保存失败'); return; }
+  }
+  $('#onboarding-modal').classList.add('hidden');
+  showToast('欢迎开始使用 Better-money，先记下第一笔吧', 'success');
+  await Promise.all([loadSettings(), refresh()]);
+}
+
+async function loadOnboardingState() {
+  const s = await (await fetch('/api/settings')).json();
+  if (!s.onboarding_completed) showOnboarding();
+  return s;
+}
+
+async function onboardPickFolder() {
+  const picked = await requestJson('/api/migration/select-folder', { method: 'POST' })
+    .catch((e) => e.data);
+  if (!picked || picked.cancelled || !picked.path) return;
+  const info = await requestJson('/api/migration/inspect', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source_path: picked.path }),
+  }).catch((e) => e.data);
+  if (!info || !info.transaction_count && !info.goal_count && !info.source_path) {
+    alert((info && info.message) || '所选文件夹不是可迁移的 Better Money 数据');
+    return;
+  }
+  onboardMigration = { path: picked.path, info };
+  $('#onboard-migrate-info').textContent =
+    `找到 ${info.transaction_count} 笔交易、${info.goal_count} 个目标；` +
+    `建议起始日期 ${info.suggested_initial_balance_date}，起始余额 ${info.initial_balance} 元。`;
+  $('#onboard-do-import').classList.remove('hidden');
+}
+
+async function onboardDoImport() {
+  if (!onboardMigration) return;
+  if (!confirm('确认迁移？迁移前会自动创建安全备份。')) return;
+  const result = await requestJson('/api/migration/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      source_path: onboardMigration.path,
+      initial_balance_date: onboardMigration.info.suggested_initial_balance_date,
+    }),
+  }).catch((e) => e.data);
+  if (!result || !result.source_path) { alert((result && result.message) || '迁移失败'); return; }
+  $('#onboard-migrate-info').textContent =
+    `迁移完成：${result.transaction_count} 笔交易、${result.goal_count} 个目标。`;
+  $('#onboard-initial-date').value = result.suggested_initial_balance_date;
+  $('#onboard-initial-balance').value = result.initial_balance;
+  onboardStep(2);
+}
+
+async function restoreBackupIntoOnboarding(file) {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch('/api/backups/restore', { method: 'POST', body: form });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) { alert(data.message || '恢复失败'); return; }
+  $('#onboard-restore-info').textContent = '恢复完成！';
+  onboardStep(2);
 }
 
 /* ---------- 标签切换 ---------- */
@@ -885,14 +1352,26 @@ async function init() {
     if (e.target === $('#confirm-modal')) closeConfirm();
   });
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !$('#confirm-modal').classList.contains('hidden')) closeConfirm();
+    if (e.key !== 'Escape') return;
+    if (!$('#confirm-modal').classList.contains('hidden')) closeConfirm();
+    if (!$('#summary-modal').classList.contains('hidden')) closeSummaryModal();
   });
   $('#month-select').addEventListener('change', (e) => {
     currentMonth = e.target.value;
     loadStats();
   });
-  $('#gen-week').addEventListener('click', () => genSummary('周'));
-  $('#gen-month').addEventListener('click', () => genSummary('月'));
+  $('#gen-summary').addEventListener('click', () => {
+    summaryOverwriteId = null;
+    openSummaryModal('this_week');
+  });
+  document.querySelectorAll('.preset-btn').forEach((b) =>
+    b.addEventListener('click', () => openSummaryModal(b.dataset.preset)));
+  $('#summary-close').addEventListener('click', closeSummaryModal);
+  $('#summary-cancel').addEventListener('click', closeSummaryModal);
+  $('#summary-submit').addEventListener('click', () => submitSummary());
+  $('#summary-modal').addEventListener('click', (e) => {
+    if (e.target === $('#summary-modal')) closeSummaryModal();
+  });
   $('#g-add').addEventListener('click', addGoal);
   bindGoalList();
   $('#r-do').addEventListener('click', doReconcile);
@@ -901,8 +1380,54 @@ async function init() {
     loadHistory();
   });
   $('#s-save').addEventListener('click', saveSettings);
+  $('#s-test-ai').addEventListener('click', () => testAiConnection('s'));
+  bindAiProvider('#s-ai-provider', '#s-api-base');
+  bindAiProvider('#onboard-ai-provider', '#onboard-api-base');
+  $('#correct-initial').addEventListener('click', openCorrectModal);
+  $('#correct-close').addEventListener('click', closeCorrectModal);
+  $('#correct-cancel').addEventListener('click', closeCorrectModal);
+  $('#correct-save').addEventListener('click', correctInitialBalance);
+  $('#correct-modal').addEventListener('click', (e) => {
+    if (e.target === $('#correct-modal')) closeCorrectModal();
+  });
+  $('#b-create').addEventListener('click', createBackupNow);
+  $('#b-restore').addEventListener('click', () => $('#b-restore-file').click());
+  $('#b-restore-file').addEventListener('change', (e) => {
+    if (e.target.files[0]) restoreBackupFile(e.target.files[0]);
+    e.target.value = '';
+  });
+  $('#b-open-folder').addEventListener('click', openDataFolder);
+  $('#s-shutdown').addEventListener('click', shutdownService);
+  // 首次引导
+  $('#onboard-new').addEventListener('click', () => {
+    $('#onboard-migrate-box').classList.add('hidden');
+    $('#onboard-restore-box').classList.add('hidden');
+  });
+  $('#onboard-migrate').addEventListener('click', () => {
+    $('#onboard-migrate-box').classList.remove('hidden');
+    $('#onboard-restore-box').classList.add('hidden');
+  });
+  $('#onboard-restore').addEventListener('click', () => {
+    $('#onboard-restore-box').classList.remove('hidden');
+    $('#onboard-migrate-box').classList.add('hidden');
+  });
+  $('#onboard-pick-folder').addEventListener('click', onboardPickFolder);
+  $('#onboard-do-import').addEventListener('click', onboardDoImport);
+  $('#onboard-pick-zip').addEventListener('click', () => $('#onboard-restore-file').click());
+  $('#onboard-restore-file').addEventListener('change', (e) => {
+    if (e.target.files[0]) restoreBackupIntoOnboarding(e.target.files[0]);
+    e.target.value = '';
+  });
+  $('#onboard-next').addEventListener('click', onboardNext);
+  $('#onboard-back').addEventListener('click', () => {
+    if (onboardStepNo > 1) onboardStep(onboardStepNo - 1);
+  });
+  $('#onboard-done').addEventListener('click', () => submitOnboarding(false));
+  $('#onboard-skip-ai').addEventListener('click', () => submitOnboarding(true));
+  $('#onboard-test-ai').addEventListener('click', () => testAiConnection('onboard'));
   bindTabs();
   await loadSettings();
+  await loadOnboardingState();
   await refresh();
   const health = await (await fetch('/api/health')).json();
   if (health.ai_configured) {

@@ -1,28 +1,39 @@
 """M6 自测：目标清单、冷静期、收入自动存、达成记支出、对账、预算预警数据。"""
 import json
+import os
 import sqlite3
 from datetime import date, timedelta
+from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import httpx
 
-BASE = "http://127.0.0.1:8642"
+from app.paths import get_paths
+
+BASE = os.environ.get("BETTER_MONEY_TEST_BASE_URL", "http://127.0.0.1:8642")
 today = date.today().isoformat()
+
+# 共享持久客户端：Windows 上每新建一次 httpx 客户端都要重建 SSL 上下文
+# （即使访问 http），证书库枚举偶发卡顿；复用一个客户端只建一次。
+_client = httpx.Client(base_url=BASE, timeout=10)
 
 
 def post(path, payload, expect=200):
-    r = httpx.post(BASE + path, json=payload, timeout=10)
+    r = _client.post(path, json=payload)
     assert r.status_code == expect, f"{path} -> {r.status_code}: {r.text}"
     return r.json()
 
 
 def patch(path, payload):
-    r = httpx.patch(BASE + path, json=payload, timeout=10)
+    r = _client.patch(path, json=payload)
     assert r.status_code == 200, r.text
     return r.json()
 
 
 def get(path):
-    r = httpx.get(BASE + path, timeout=10)
+    r = _client.get(path)
     assert r.status_code == 200, r.text
     return r.json()
 
@@ -86,7 +97,7 @@ post(f"/api/goals/{g3['id']}/action", {"action": "achieve_buy"})
 goals = get("/api/goals")
 pad = [g for g in goals if g["id"] == g3["id"]][0]
 assert pad["status"] == "已达成" and pad["achieved_at"]
-conn = sqlite3.connect("data/better_money.db")
+conn = sqlite3.connect(get_paths().db_path)
 tx = conn.execute(
     "SELECT * FROM transactions WHERE source='目标' AND amount=400").fetchone()
 assert tx and tx[4] == "购物" and tx[3] == "支出"  # type=idx3, category=idx4

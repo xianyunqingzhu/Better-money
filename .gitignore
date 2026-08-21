@@ -4,3 +4,12 @@ __pycache__/
 *.pyc
 tests/xiaopiao.png
 .worktrees/
+.pytest_cache/
+.review*/
+.root-verify*/
+.task4b-*/
+build-output/
+dist/
+*.spec.tmp
+release/*.exe
+release/SHA256SUMS.txt

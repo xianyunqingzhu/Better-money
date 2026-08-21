@@ -223,32 +223,34 @@ def _gen_image(period_type: str) -> str:
         return ""
 
 
-def _upsert(period_type: str, start: str, end: str, content: str, image_path: str) -> None:
+def _upsert(period_type: str, start: str, end: str, content: str, image_path: str) -> int:
     conn = db.get_conn()
     existing = conn.execute(
-        "SELECT id FROM summaries WHERE period_type = ? AND period_start = ?",
-        (period_type, start)).fetchone()
+        "SELECT id FROM summaries WHERE period_type = ? AND period_start = ? "
+        "AND period_end = ?",
+        (period_type, start, end)).fetchone()
     if existing:
         conn.execute(
-            "UPDATE summaries SET period_end = ?, content = ?, image_path = ?, expired = 0, "
+            "UPDATE summaries SET content = ?, image_path = ?, expired = 0, "
             "created_at = ? WHERE id = ?",
-            (end, content, image_path, db.now_str(), existing["id"]))
+            (content, image_path, db.now_str(), existing["id"]))
+        summary_id = existing["id"]
     else:
-        conn.execute(
+        cur = conn.execute(
             "INSERT INTO summaries(period_type, period_start, period_end, content, image_path, expired, created_at) "
             "VALUES (?, ?, ?, ?, ?, 0, ?)",
             (period_type, start, end, content, image_path, db.now_str()))
+        summary_id = cur.lastrowid
     conn.commit()
     conn.close()
+    return summary_id
 
 
-def generate(period_type: str, anchor_str: str = "") -> tuple[str, str]:
-    """生成总结 → (正文, 配图路径)。AI 不可用抛 AIUnavailableError。"""
-    try:
-        anchor = date.fromisoformat(anchor_str) if anchor_str else date.today()
-    except ValueError:
-        anchor = date.today()
-    start, end = period_range(period_type, anchor)
+def generate(period_type: str, start: date, end: date) -> tuple[str, str, int]:
+    """生成指定区间的总结 → (正文, 配图路径, 记录 id)。AI 不可用抛 AIUnavailableError。
+
+    周/月只决定写作风格与篇幅，区间可以是任意起止日期。
+    """
     ctx = gather(period_type, start, end)
     cfg = load_config()
     tone = str(cfg.get("tone") or "朋友")
@@ -273,5 +275,5 @@ def generate(period_type: str, anchor_str: str = "") -> tuple[str, str]:
     if not content:
         raise AIUnavailableError("模型返回空内容")
     image_path = _gen_image(period_type)
-    _upsert(period_type, start.isoformat(), end.isoformat(), content, image_path)
-    return content, image_path
+    summary_id = _upsert(period_type, start.isoformat(), end.isoformat(), content, image_path)
+    return content, image_path, summary_id

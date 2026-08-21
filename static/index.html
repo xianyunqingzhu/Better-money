@@ -87,7 +87,7 @@
           <div class="chart-card"><h3>分类占比</h3><div id="chart-cat" class="chart" role="img" aria-label="本月支出分类占比图"></div></div>
           <div class="chart-card"><h3>支出趋势 <span>近 30 天</span></h3><div id="chart-daily" class="chart" role="img" aria-label="近三十天支出趋势图"></div></div>
           <div class="chart-card"><h3>周对比 <span>近 8 周</span></h3><div id="chart-week" class="chart" role="img" aria-label="近八周支出对比图"></div></div>
-          <div class="chart-card"><h3>目标进度</h3><div id="chart-goal" class="chart" role="img" aria-label="当前储蓄目标进度图"></div></div>
+          <div class="chart-card"><h3>目标进度</h3><div id="goal-progress-list" class="goal-progress-list" aria-label="储蓄目标进度列表"></div></div>
         </div>
         <h3>最近记录</h3>
         <div class="table-scroll">
@@ -117,8 +117,7 @@
     <section id="summaries" class="panel" role="tabpanel" aria-labelledby="tab-summaries">
       <div class="page-title"><span class="eyebrow">MONEY REVIEW</span><h2>周 / 月总结</h2><p>从真实流水里回看消费习惯和储蓄进展。</p></div>
       <div class="btn-row" style="max-width: 440px">
-        <button id="gen-week" class="ghost">生成本周总结</button>
-        <button id="gen-month" class="ghost">生成本月总结</button>
+        <button id="gen-summary" class="primary">生成总结</button>
       </div>
       <div id="summary-hint" class="ai-note hidden"></div>
       <div id="summary-list"></div>
@@ -145,7 +144,9 @@
     <section id="settings" class="panel" role="tabpanel" aria-labelledby="tab-settings">
       <div class="page-title"><span class="eyebrow">PREFERENCES</span><h2>设置</h2><p>管理预算、储蓄规则与本地 AI 服务。</p></div>
       <div class="settings-grid">
-        <div class="form-row"><label>初始余额（元）</label><input type="number" step="0.01" id="s-initial"></div>
+        <div class="form-row"><label>初始余额（元）</label>
+          <div class="readonly-row"><b id="s-initial-display">--</b><button id="correct-initial" class="mini">更正初始余额</button></div>
+        </div>
         <div class="form-row"><label>月预算（元）</label><input type="number" step="0.01" id="s-budget"></div>
         <div class="form-row"><label>收入自动存比例（0~1）</label><input type="number" step="0.05" min="0" max="1" id="s-ratio"></div>
         <div class="form-row"><label>总结语气</label>
@@ -153,24 +154,45 @@
             <option>朋友</option><option>毒舌</option><option>温柔</option><option>老师</option>
           </select>
         </div>
+        <div class="form-row"><label>AI 服务商</label>
+          <select id="s-ai-provider">
+            <option>OpenAI</option><option>DeepSeek</option><option>Qwen</option><option>自定义</option>
+          </select>
+        </div>
         <div class="form-row"><label>API Base</label><input type="text" id="s-api-base" placeholder="https://api.openai.com/v1"></div>
-        <div class="form-row"><label>API Key</label><input type="password" id="s-api-key" placeholder="下一阶段启用 AI 时填写"></div>
+        <div class="form-row"><label>API Key</label><input type="password" id="s-api-key" placeholder="sk-..."></div>
+        <div class="form-row"><label>模型名</label><input type="text" id="s-model" placeholder="gpt-4o-mini"></div>
       </div>
-      <button id="s-save" class="primary">保存设置</button>
+      <div class="btn-row" style="max-width: 560px">
+        <button id="s-save" class="primary">保存设置</button>
+        <button id="s-test-ai" class="ghost">测试 AI 连接</button>
+      </div>
+      <p id="s-ai-result" class="muted"></p>
       <div class="reconcile-box">
         <h3>对账校准</h3>
         <p class="muted">账本余额 <b id="r-ledger">--</b>。输入真实余额（微信+支付宝+银行卡+现金加总），差额自动记为调整。</p>
         <div class="form-row" style="max-width: 240px"><label>真实余额（元）</label><input type="number" step="0.01" id="r-actual"></div>
         <button id="r-do" class="ghost">校准</button>
         <span id="r-result" class="muted"></span>
+        <h3 style="margin-top: 14px">调整历史</h3>
+        <div id="adjustment-list" class="adjustment-list"></div>
       </div>
       <div class="reconcile-box">
-        <h3>数据导出与备份</h3>
-        <p class="muted">每次启动自动备份数据库到 data/backups/（保留最近 30 份）。也可手动下载：</p>
-        <div class="btn-row" style="max-width: 480px">
+        <h3>数据备份</h3>
+        <p class="muted">最近备份：<b id="s-latest-backup">--</b>。每次启动自动备份；换电脑可用「导出完整备份 ZIP」+「恢复备份」迁移。</p>
+        <div class="btn-row" style="max-width: 680px">
+          <button id="b-create" class="ghost">立即备份</button>
+          <button id="b-restore" class="ghost">恢复备份</button>
+          <a id="b-export" class="ghost link" href="#">导出完整备份 ZIP</a>
+          <button id="b-open-folder" class="ghost">打开数据文件夹</button>
           <a class="ghost link" href="/api/export/transactions.csv">导出全部交易 CSV</a>
-          <a class="ghost link" href="/api/export/backup.db">下载完整备份</a>
         </div>
+        <input type="file" id="b-restore-file" accept=".zip" class="hidden">
+      </div>
+      <div class="reconcile-box">
+        <h3>退出服务</h3>
+        <p class="muted">关闭浏览器不会停止服务；点这里才会真正停止（下次双击启动脚本重新打开）。</p>
+        <button id="s-shutdown" class="ghost">退出服务</button>
       </div>
       <div class="reconcile-box">
         <h3>快速上手</h3>
@@ -179,13 +201,99 @@
           <li>每晚把当天花销一口气打进智能记账框（支持多笔、AA、补记）</li>
           <li>购物小票或支付截图用「上传截图 / 小票」；月底漏记用「导入账单 CSV」</li>
           <li>想买的东西加进目标清单，冷静期帮你拦住冲动消费；收入自动存 30% 进第一目标</li>
-          <li>周末点「生成本周总结」，月末点「生成本月总结」</li>
+          <li>总结页点「生成总结」：可选本周 / 上周 / 本月 / 上月，或自定义任意区间，周总结、月总结都可以</li>
           <li>数据全在 data/ 文件夹：数据库、截图原件、备份都在里面，整个文件夹拷走即可迁移</li>
         </ol>
       </div>
       <p class="todo-note">Key 只保存在本地 data/config.json，不会上传到任何别的地方。</p>
     </section>
   </main>
+
+  <!-- 首次引导：起点 → 初始余额 → 预算 → AI（可跳过），完成前不可关闭 -->
+  <div id="onboarding-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h2 id="onboarding-title">欢迎使用 Better-money</h2>
+      </div>
+      <div class="onboard-body">
+        <ol class="onboard-steps" aria-hidden="true">
+          <li data-onboard-step-ind="1">起点</li>
+          <li data-onboard-step-ind="2">初始余额</li>
+          <li data-onboard-step-ind="3">预算</li>
+          <li data-onboard-step-ind="4">AI（可选）</li>
+        </ol>
+        <div id="onboard-step-1" class="onboard-step">
+          <p class="muted">以前用过 Better-money 吗？</p>
+          <div class="onboard-choices">
+            <button type="button" id="onboard-new" class="choice-pill">全新开始</button>
+            <button type="button" id="onboard-migrate" class="choice-pill">迁移旧数据</button>
+            <button type="button" id="onboard-restore" class="choice-pill">从备份恢复</button>
+          </div>
+          <div id="onboard-migrate-box" class="hidden" style="margin-top: 10px">
+            <div class="btn-row">
+              <button type="button" id="onboard-pick-folder" class="ghost">选择旧数据文件夹</button>
+              <button type="button" id="onboard-do-import" class="ghost hidden">确认迁移</button>
+            </div>
+            <p id="onboard-migrate-info" class="muted"></p>
+          </div>
+          <div id="onboard-restore-box" class="hidden" style="margin-top: 10px">
+            <button type="button" id="onboard-pick-zip" class="ghost">选择备份 ZIP 文件</button>
+            <input type="file" id="onboard-restore-file" accept=".zip" class="hidden">
+            <p id="onboard-restore-info" class="muted"></p>
+          </div>
+        </div>
+        <div id="onboard-step-2" class="onboard-step hidden">
+          <p class="muted">「初始余额」= 起始日之前你手头一共有的钱（微信 + 支付宝 + 银行卡 + 现金加总）。</p>
+          <div class="form-row"><label>起始日期</label><input type="date" id="onboard-initial-date"></div>
+          <div class="form-row"><label>初始余额（元）</label><input type="number" step="0.01" min="0" id="onboard-initial-balance" placeholder="0"></div>
+        </div>
+        <div id="onboard-step-3" class="onboard-step hidden">
+          <div class="form-row"><label>月预算（元）</label><input type="number" step="0.01" min="0" id="onboard-budget" value="1500"></div>
+          <div class="form-row"><label>收入自动存比例（0~1，0 表示不自动存）</label><input type="number" step="0.05" min="0" max="1" id="onboard-ratio" value="0.3"></div>
+        </div>
+        <div id="onboard-step-4" class="onboard-step hidden">
+          <p class="muted">AI 记账与总结是可选的：跳过也能手动记账。填好后可以先「测试连接」再完成。</p>
+          <div class="form-row"><label>AI 服务商</label>
+            <select id="onboard-ai-provider">
+              <option>OpenAI</option><option>DeepSeek</option><option>Qwen</option><option selected>自定义</option>
+            </select>
+          </div>
+          <div class="form-row"><label>API Base</label><input type="text" id="onboard-api-base" placeholder="https://api.openai.com/v1"></div>
+          <div class="form-row"><label>API Key</label><input type="password" id="onboard-ai-key" placeholder="sk-..."></div>
+          <div class="form-row"><label>模型名</label><input type="text" id="onboard-model" placeholder="gpt-4o-mini"></div>
+          <div class="btn-row" style="max-width: 320px">
+            <button type="button" id="onboard-test-ai" class="ghost">测试连接</button>
+          </div>
+          <p id="onboard-ai-result" class="muted"></p>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button id="onboard-back" class="ghost hidden">上一步</button>
+        <button id="onboard-skip-ai" class="ghost hidden">跳过 AI 完成</button>
+        <button id="onboard-next" class="primary small">下一步</button>
+        <button id="onboard-done" class="primary small hidden">完成，开始记账</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 更正初始余额：受保护操作，变更前自动安全备份 -->
+  <div id="correct-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="correct-title">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h2 id="correct-title">更正初始余额</h2>
+        <button id="correct-close" class="del-btn modal-close" aria-label="关闭">&times;</button>
+      </div>
+      <div class="summary-modal-body">
+        <p class="res-warn">注意：初始余额与起始日期是账本基准，修改会影响所有余额计算；确认后会自动先做一次安全备份。</p>
+        <div class="form-row"><label>起始日期</label><input type="date" id="correct-date"></div>
+        <div class="form-row"><label>初始余额（元）</label><input type="number" step="0.01" id="correct-amount"></div>
+      </div>
+      <div class="modal-actions">
+        <button id="correct-cancel" class="ghost">取消</button>
+        <button id="correct-save" class="primary small">确认更正</button>
+      </div>
+    </div>
+  </div>
 
   <!-- 确认面板：识别结果先预览、可改可删，确认后才入账 -->
   <div id="confirm-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
@@ -204,6 +312,45 @@
       <div class="modal-actions">
         <button id="confirm-cancel" class="ghost">取消</button>
         <button id="confirm-save" class="primary small">确认入账</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 总结生成面板：选择类型与区间，生成 / 重新生成 -->
+  <div id="summary-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="summary-modal-title">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h2 id="summary-modal-title">生成总结</h2>
+        <button id="summary-close" class="del-btn modal-close" aria-label="关闭总结面板">&times;</button>
+      </div>
+      <div class="summary-modal-body">
+        <div class="form-row">
+          <label>总结类型（周总结精炼 200–400 字，月总结详尽 400–800 字）</label>
+          <div class="choice-row" role="radiogroup" aria-label="总结类型">
+            <label class="choice-pill"><input type="radio" name="summary-type" value="周" checked>周总结</label>
+            <label class="choice-pill"><input type="radio" name="summary-type" value="月">月总结</label>
+          </div>
+        </div>
+        <div class="form-row">
+          <label>时间区间</label>
+          <div class="preset-row">
+            <button type="button" class="mini preset-btn" data-preset="this_week">本周</button>
+            <button type="button" class="mini preset-btn" data-preset="last_week">上周</button>
+            <button type="button" class="mini preset-btn" data-preset="this_month">本月</button>
+            <button type="button" class="mini preset-btn" data-preset="last_month">上月</button>
+            <button type="button" class="mini preset-btn" data-preset="custom">自定义</button>
+          </div>
+          <div class="range-row">
+            <input type="date" id="summary-start" aria-label="开始日期">
+            <span class="muted">至</span>
+            <input type="date" id="summary-end" aria-label="结束日期">
+          </div>
+        </div>
+        <p id="summary-range-error" class="res-err hidden"></p>
+      </div>
+      <div class="modal-actions">
+        <button id="summary-cancel" class="ghost">取消</button>
+        <button id="summary-submit" class="primary small">开始写作</button>
       </div>
     </div>
   </div>

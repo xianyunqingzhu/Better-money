@@ -7,11 +7,13 @@ from __future__ import annotations
 
 from contextlib import closing
 from datetime import datetime
+from io import BytesIO
 import os
 from pathlib import Path
 import sqlite3
 import sys
 import time
+import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -20,7 +22,11 @@ import httpx
 from app.paths import PROJECT_ROOT, get_paths
 
 
-BASE = "http://127.0.0.1:8642"
+BASE = os.environ.get("BETTER_MONEY_TEST_BASE_URL", "http://127.0.0.1:8642")
+
+# 共享持久客户端：Windows 上每新建一次 httpx 客户端都要重建 SSL 上下文
+# （即使访问 http），证书库枚举偶发卡顿；复用一个客户端只建一次。
+_client = httpx.Client(base_url=BASE, timeout=30)
 
 
 def _require_isolated_application_home() -> None:
@@ -93,7 +99,7 @@ def check_backup_policy() -> None:
 
 
 def post(path: str, payload: dict, expect: int = 200) -> dict:
-    response = httpx.post(BASE + path, json=payload, timeout=10)
+    response = _client.post(path, json=payload)
     assert response.status_code == expect, (
         f"{path} -> {response.status_code}: {response.text}"
     )
@@ -129,10 +135,10 @@ def main() -> None:
         },
     )
 
-    transactions = httpx.get(BASE + "/api/transactions", timeout=10).json()
+    transactions = _client.get("/api/transactions").json()
     transaction_id = transactions[0]["id"]
-    response = httpx.patch(
-        BASE + f"/api/transactions/{transaction_id}",
+    response = _client.patch(
+        f"/api/transactions/{transaction_id}",
         json={
             "date": today,
             "amount": 18.5,
@@ -141,24 +147,40 @@ def main() -> None:
             "merchant": "食堂",
             "note": "改过",
         },
-        timeout=10,
     )
     assert response.status_code == 200, response.text
-    transactions = httpx.get(BASE + "/api/transactions", timeout=10).json()
+    transactions = _client.get("/api/transactions").json()
     edited = [item for item in transactions if item["id"] == transaction_id][0]
     assert edited["amount"] == 18.5 and edited["note"] == "改过", edited
     print("edit tx ok")
 
-    response = httpx.get(BASE + "/api/export/transactions.csv", timeout=10)
+    response = _client.get("/api/export/transactions.csv")
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/csv")
     text = response.content.decode("utf-8-sig")
     assert text.startswith("日期") and "食堂" in text, text[:80]
     print("csv export ok, lines:", len(text.splitlines()))
 
-    response = httpx.get(BASE + "/api/export/backup.db", timeout=10)
-    assert response.status_code == 200 and len(response.content) > 10000
-    print("legacy backup download ok, bytes:", len(response.content))
+    response = _client.post(
+        "/api/backups/create",
+        json={"include_images": False},
+    )
+    assert response.status_code == 200, response.text
+    created = response.json()
+    listed = _client.get("/api/backups")
+    assert listed.status_code == 200, listed.text
+    assert created["filename"] in {item["filename"] for item in listed.json()}
+    exported = _client.get(
+        "/api/backups/export",
+        params={"filename": created["filename"]},
+    )
+    assert exported.status_code == 200 and len(exported.content) > 0
+    with zipfile.ZipFile(BytesIO(exported.content)) as archive:
+        assert {
+            "manifest.json", "data/better_money.db", "data/config.json"
+        } <= set(archive.namelist())
+        assert archive.testzip() is None
+    print("verified ZIP backup download ok, bytes:", len(exported.content))
 
     check_backup_policy()
 
@@ -168,11 +190,11 @@ def main() -> None:
             "VALUES ('午饭没看懂多少钱', '', '2026-08-17 00:00:00')"
         )
         connection.commit()
-    pending = httpx.get(BASE + "/api/pending", timeout=10).json()
+    pending = _client.get("/api/pending").json()
     assert len(pending) == 1 and pending[0]["raw_text"] == "午饭没看懂多少钱"
-    response = httpx.delete(BASE + f"/api/pending/{pending[0]['id']}", timeout=10)
+    response = _client.delete(f"/api/pending/{pending[0]['id']}")
     assert response.json()["ok"]
-    assert httpx.get(BASE + "/api/pending", timeout=10).json() == []
+    assert _client.get("/api/pending").json() == []
     print("pending queue ok")
 
     post(
@@ -187,7 +209,7 @@ def main() -> None:
             "source": "手动",
         },
     )
-    httpx.patch(BASE + "/api/transactions", json={}, timeout=10)
+    _client.patch("/api/transactions", json={})
     print("M7 E2E ALL OK")
 
 

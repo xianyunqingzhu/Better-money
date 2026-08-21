@@ -18,6 +18,34 @@ class AIUnavailableError(Exception):
     """网络、认证或 API 服务不可用（前端亮红色横幅，用户自行解决）。"""
 
 
+AI_PROVIDERS = {
+    "OpenAI": "https://api.openai.com/v1",
+    "DeepSeek": "https://api.deepseek.com",
+    "Qwen": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "自定义": "",
+}
+
+
+def test_connection(api_base: str, api_key: str, model: str) -> None:
+    """Verify one-token chat completion against an unsaved draft; never logs the key."""
+    if not api_key.strip():
+        raise AIUnavailableError("未填写 API Key")
+    if not api_base.strip():
+        raise AIUnavailableError("未填写 API Base")
+    if not model.strip():
+        raise AIUnavailableError("未填写模型名称")
+    client = OpenAI(
+        api_key=api_key, base_url=api_base, timeout=10.0, max_retries=0)
+    try:
+        client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": "回复 OK"}],
+            max_tokens=4,
+        )
+    except Exception as e:
+        raise AIUnavailableError(str(e)) from e
+
+
 EXPENSE_CATS = ["餐饮", "奶茶咖啡", "交通", "学习", "购物", "娱乐", "生活", "其他"]
 INCOME_CATS = ["兼职", "红包", "家里给", "其他收入"]
 VALID_TYPES = {"支出", "收入", "退款", "取现", "转账", "还款"}

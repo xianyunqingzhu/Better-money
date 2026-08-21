@@ -4,30 +4,44 @@
 或双击 启动.bat。
 """
 import io
+import math
+import secrets as _secrets
 import uuid
 from contextlib import asynccontextmanager
 from datetime import date, timedelta
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, UploadFile
+from fastapi import FastAPI, File, Form, Header, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from starlette.background import BackgroundTask
 
-from app import ai, backup, db, importers, summarizer
-from app.config import load_config, save_config
+from app import ai, backup, db, importers, ledger, recovery, summarizer, uploads
+from app import summaries as summary_service
+from app.config import load_config, load_raw_config, save_config
+from app.data_api import router as data_router
+from app.goals import allocate_savings
 from app.paths import get_paths, resource_root
+from app.version import APP_ID, APP_VERSION, HEALTH_PROTOCOL
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     get_paths().ensure_directories()
+    recovery.recover_interrupted_installs()
     db.init_db()
-    backup.backup_database()
+    conn = db.get_conn()
+    try:
+        ledger.ensure_finance_config(conn, load_raw_config(), save_config)
+    finally:
+        conn.close()
+    backup.ensure_daily_backup()
     yield
 
 
 app = FastAPI(title="Better-money", lifespan=lifespan)
+app.include_router(data_router)
 
 
 # ---------- 基础 ----------
@@ -35,7 +49,41 @@ app = FastAPI(title="Better-money", lifespan=lifespan)
 @app.get("/api/health")
 def health():
     cfg = load_config()
-    return {"ok": True, "ai_configured": bool(cfg.get("api_key"))}
+    return {
+        "ok": True,
+        "app_id": APP_ID,
+        "version": APP_VERSION,
+        "protocol": HEALTH_PROTOCOL,
+        "ai_configured": bool(cfg.get("api_key")),
+    }
+
+
+@app.get("/api/runtime")
+def runtime():
+    token = getattr(app.state, "session_token", "") or ""
+    return JSONResponse(
+        {"control_available": bool(token), "session_token": token},
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@app.post("/api/control/shutdown")
+def control_shutdown(
+    x_better_money_token: str | None = Header(default=None),
+):
+    expected = getattr(app.state, "session_token", "") or ""
+    request_shutdown = getattr(app.state, "request_shutdown", None)
+    if not expected or request_shutdown is None:
+        return JSONResponse(status_code=409, content={
+            "error": "shutdown_unavailable",
+            "message": "开发者模式由终端管理，无法从这里关闭服务"})
+    if not x_better_money_token or not _secrets.compare_digest(
+        x_better_money_token, expected
+    ):
+        return JSONResponse(status_code=403, content={"error": "forbidden"})
+    # Shut down only after the confirmation response is delivered.
+    return JSONResponse(
+        {"ok": True}, background=BackgroundTask(request_shutdown))
 
 
 # ---------- 交易 ----------
@@ -50,23 +98,22 @@ class TxIn(BaseModel):
     source: str = "手动"
 
 
-def _apply_auto_save(conn, income_item: dict) -> float:
-    """每笔收入按 auto_save_ratio 存入优先级第一的活跃目标（已确认决策 ①A）。"""
+def _apply_auto_save(conn, income_item: dict) -> list[dict]:
+    """按配置比例规划收入，并返回跨目标的分配明细。"""
     cfg = load_config()
     ratio = float(cfg.get("auto_save_ratio") or 0)
     if ratio <= 0:
-        return 0.0
-    goal = conn.execute(
-        "SELECT id, name FROM goals WHERE status IN ('冷静期','进行中') "
-        "ORDER BY priority, id LIMIT 1"
-    ).fetchone()
-    if not goal:
-        return 0.0
-    amt = round(float(income_item["amount"]) * ratio, 2)
-    if amt <= 0:
-        return 0.0
-    conn.execute("UPDATE goals SET saved = saved + ? WHERE id = ?", (amt, goal["id"]))
-    return amt
+        return []
+    amount = round(float(income_item["amount"]) * ratio, 2)
+    allocations = allocate_savings(conn, amount)
+    return [
+        {
+            "goal_id": allocation.goal_id,
+            "goal_name": allocation.goal_name,
+            "amount": allocation.amount,
+        }
+        for allocation in allocations
+    ]
 
 
 @app.post("/api/transactions")
@@ -79,13 +126,18 @@ def add_transaction(tx: TxIn):
         (tx.date, tx.amount, tx.type, tx.category, tx.merchant, tx.note,
          tx.source, db.now_str(), db.now_str()),
     )
+    savings_allocations = []
     if tx.type == "收入":
-        _apply_auto_save(conn, {"amount": tx.amount})
+        savings_allocations = _apply_auto_save(conn, {"amount": tx.amount})
     conn.commit()
     tx_id = cur.lastrowid
     conn.close()
     _mark_summaries_expired(tx.date)
-    return {"ok": True, "id": tx_id}
+    return {
+        "ok": True,
+        "id": tx_id,
+        "savings_allocations": savings_allocations,
+    }
 
 
 @app.get("/api/transactions")
@@ -203,30 +255,17 @@ def export_transactions_csv():
     )
 
 
-@app.get("/api/export/backup.db")
-def export_backup_db():
-    import shutil
-    paths = get_paths()
-    paths.backups_dir.mkdir(parents=True, exist_ok=True)
-    dest = paths.backups_dir / "manual-export.db"
-    shutil.copy2(paths.db_path, dest)
-    return FileResponse(dest, media_type="application/octet-stream",
-                        filename="better-money-backup.db")
-
-
 def _mark_summaries_expired(date_str: str) -> None:
-    """账目变化后，把覆盖该日期的周/月总结标记为过期。"""
+    """账目变化后，把覆盖该日期的总结（任意区间）标记为过期。"""
     try:
-        d = date.fromisoformat(date_str)
-    except ValueError:
+        date.fromisoformat(date_str)
+    except (TypeError, ValueError):
         return
-    week_start = (d - timedelta(days=d.weekday())).isoformat()
-    month_start = d.replace(day=1).isoformat()
     conn = db.get_conn()
     conn.execute(
         "UPDATE summaries SET expired = 1 "
-        "WHERE (period_type = '周' AND period_start = ?) OR (period_type = '月' AND period_start = ?)",
-        (week_start, month_start))
+        "WHERE period_start <= ? AND period_end >= ?",
+        (date_str, date_str))
     conn.commit()
     conn.close()
 
@@ -274,8 +313,6 @@ def parse_text(req: ParseIn):
 
 # ---------- 图片识别（M3：小票/截图，确认后再入账） ----------
 
-ALLOWED_EXT = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
-
 
 @app.post("/api/upload_images")
 async def upload_images(
@@ -286,16 +323,31 @@ async def upload_images(
     """保存图片 → 视觉模型逐张识别 → 返回待确认条目（不直接入账）。"""
     if not files:
         return JSONResponse(status_code=400, content={"error": "empty", "message": "没有文件"})
+    if len(files) > uploads.MAX_IMAGES_PER_REQUEST:
+        return JSONResponse(status_code=400, content={
+            "error": "too_many_files",
+            "message": f"一次最多上传 {uploads.MAX_IMAGES_PER_REQUEST} 张图片"})
     day_dir = get_paths().images_dir / (date or "misc")
     day_dir.mkdir(parents=True, exist_ok=True)
     paths = []
     for f in files:
-        ext = Path(f.filename or "").suffix.lower()
-        if ext not in ALLOWED_EXT:
-            ext = ".jpg"
-        dest = day_dir / f"{uuid.uuid4().hex}{ext}"
-        dest.write_bytes(await f.read())
-        paths.append(str(dest))
+        pending_tmp = None
+        try:
+            data = await uploads.read_limited(f, uploads.IMAGE_MAX_BYTES)
+            ext = uploads.validate_image(data, f.filename or "")
+            dest = day_dir / f"{uuid.uuid4().hex}.{ext}"
+            pending_tmp = dest.with_name(dest.name + ".uploading")
+            pending_tmp.write_bytes(data)
+            pending_tmp.replace(dest)
+            paths.append(str(dest))
+            pending_tmp = None
+        except uploads.UploadError as e:
+            status = 413 if e.code == "file_too_large" else 400
+            return JSONResponse(status_code=status, content={
+                "error": e.code, "message": str(e)})
+        finally:
+            if pending_tmp is not None:
+                pending_tmp.unlink(missing_ok=True)
 
     items, questions, failed, first_err = [], [], 0, ""
     for p in paths:
@@ -342,42 +394,39 @@ def confirm_items(req: ConfirmIn):
 
 @app.post("/api/import_csv")
 async def import_csv(file: UploadFile = File(...)):
-    """微信/支付宝账单 CSV(.csv/.xlsx) → 解析为待确认条目（不直接入账）。"""
-    raw = await file.read()
-    name = (file.filename or "").lower()
+    """微信/支付宝账单 CSV(.csv/.xlsx/.xlsm) → 解析为待确认条目（不直接入账）。"""
+    try:
+        raw = await uploads.read_limited(file, uploads.STATEMENT_MAX_BYTES)
+        kind = uploads.validate_statement(raw, file.filename or "")
+    except uploads.UploadError as e:
+        status = 413 if e.code == "file_too_large" else 400
+        return JSONResponse(status_code=status, content={
+            "error": e.code, "message": str(e)})
 
-    if name.endswith((".xlsx", ".xlsm")):
-        try:
+    try:
+        if kind in ("xlsx", "xlsm"):
             from openpyxl import load_workbook
             wb = load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
             ws = wb.active
             rows = [[("" if c is None else str(c)) for c in row]
                     for row in ws.iter_rows(values_only=True)]
-        except Exception as e:
-            return JSONResponse(status_code=400, content={
-                "error": "format", "message": f"Excel 解析失败：{e}。可导出为 CSV 再导入。"})
-    elif name.endswith(".xls"):
-        return JSONResponse(status_code=400, content={
-            "error": "format", "message": "旧版 .xls 不支持，请导出为 .csv 或 .xlsx。"})
-    else:
-        text = None
-        for enc in ("utf-8-sig", "gbk", "utf-8"):
-            try:
-                text = raw.decode(enc)
-                break
-            except UnicodeDecodeError:
-                continue
-        if text is None:
-            return JSONResponse(status_code=400, content={
-                "error": "encoding", "message": "无法识别文件编码，请导出为 CSV 后重试。"})
-        import csv as _csv
-        rows = list(_csv.reader(io.StringIO(text.lstrip("\ufeff"))))
-
-    try:
+        else:
+            text = None
+            for enc in ("utf-8-sig", "gbk", "utf-8"):
+                try:
+                    text = raw.decode(enc)
+                    break
+                except UnicodeDecodeError:
+                    continue
+            if text is None:
+                return JSONResponse(status_code=400, content={
+                    "error": "encoding", "message": "无法识别文件编码，请导出为 CSV 后重试。"})
+            import csv as _csv
+            rows = list(_csv.reader(io.StringIO(text.lstrip("\ufeff"))))
         items, skipped = importers.parse_rows(rows)
     except Exception as e:
         return JSONResponse(status_code=400, content={
-            "error": "format", "message": f"账单格式无法识别：{e}"})
+            "error": "format", "message": f"账单文件无法解析：{e}"})
     if not items:
         return {"ok": True, "items": [], "skipped_rows": skipped,
                 "message": "没有解析出可入账的交易行"}
@@ -414,7 +463,11 @@ def _save_items(items: list[dict], source: str = "文字"):
         row = dict(it)
         row["id"] = cur.lastrowid
         if it["type"] == "收入":
-            row["auto_saved"] = _apply_auto_save(conn, it)
+            allocations = _apply_auto_save(conn, it)
+            row["auto_saved"] = round(
+                sum(allocation["amount"] for allocation in allocations), 2
+            )
+            row["savings_allocations"] = allocations
         for li in it.get("line_items") or []:
             conn.execute(
                 "INSERT INTO line_items(transaction_id, name, qty, price) VALUES (?, ?, ?, ?)",
@@ -445,10 +498,13 @@ def _month_range(month: str):
 def stats(month: str = ""):
     """图表数据：所选月的分类占比、近30天趋势、近8周对比。"""
     start, end = _month_range(month)
+    cfg = load_config()
     conn = db.get_conn()
 
     def rows(sql: str, *args):
         return conn.execute(sql, args).fetchall()
+
+    snap = ledger.monthly_snapshot(conn, cfg, f"{start[:7]}")
 
     # 分类占比（支出 − 退款，按分类）
     cat_rows = rows(
@@ -511,6 +567,10 @@ def stats(month: str = ""):
         "month": f"{start[:7]}",
         "month_expense": round(month_expense, 2),
         "month_income": round(month_income, 2),
+        "opening_balance": round(snap.opening_balance, 2),
+        "closing_balance": round(snap.closing_balance, 2),
+        "planned_amount": round(snap.planned_amount, 2),
+        "unplanned_balance": round(snap.unplanned_balance, 2),
         "category": [{"name": r["category"], "value": round(r["total"], 2)}
                      for r in cat_rows],
         "daily": daily,
@@ -587,10 +647,19 @@ def patch_goal(gid: int, patch: dict):
 @app.delete("/api/goals/{gid}")
 def delete_goal(gid: int):
     conn = db.get_conn()
+    goal = conn.execute(
+        "SELECT name, saved FROM goals WHERE id = ?", (gid,)
+    ).fetchone()
+    if not goal:
+        conn.close()
+        return JSONResponse(
+            status_code=404,
+            content={"error": "not_found", "message": "目标不存在"},
+        )
     conn.execute("DELETE FROM goals WHERE id = ?", (gid,))
     conn.commit()
     conn.close()
-    return {"ok": True}
+    return {"ok": True, "name": goal["name"], "saved": float(goal["saved"] or 0)}
 
 
 class GoalAction(BaseModel):
@@ -715,7 +784,46 @@ def reconcile(req: ReconcileIn):
         (date.today().isoformat(), diff, req.note or "对账校准", db.now_str()))
     conn.commit()
     conn.close()
+    _mark_summaries_expired(date.today().isoformat())
     return {"ok": True, "diff": diff}
+
+
+@app.get("/api/adjustments")
+def list_adjustments():
+    """对账调整历史：最新在前，含撤销关系（reversed_by_id）。"""
+    conn = db.get_conn()
+    rows = conn.execute(
+        "SELECT a.*, b.id AS reversed_by_id FROM adjustments a "
+        "LEFT JOIN adjustments b ON b.reverses_adjustment_id = a.id "
+        "ORDER BY a.created_at DESC, a.id DESC").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+@app.post("/api/adjustments/{aid}/reverse")
+def reverse_adjustment(aid: int):
+    """撤销一笔对账调整：新增镜像负数记录，不影响原记录。"""
+    conn = db.get_conn()
+    row = conn.execute(
+        "SELECT a.*, b.id AS reversed_by_id FROM adjustments a "
+        "LEFT JOIN adjustments b ON b.reverses_adjustment_id = a.id "
+        "WHERE a.id = ?", (aid,)).fetchone()
+    if not row:
+        conn.close()
+        return JSONResponse(status_code=404, content={
+            "error": "not_found", "message": "调整不存在"})
+    if row["reversed_by_id"]:
+        conn.close()
+        return JSONResponse(status_code=409, content={
+            "error": "already_reversed", "message": "该调整已撤销"})
+    cur = conn.execute(
+        "INSERT INTO adjustments(date, diff, note, created_at, reverses_adjustment_id) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (row["date"], -row["diff"], f"撤销：{row['note']}", db.now_str(), aid))
+    conn.commit()
+    conn.close()
+    _mark_summaries_expired(row["date"])
+    return {"ok": True, "reversal_id": cur.lastrowid}
 
 
 # ---------- 周/月总结（M5） ----------
@@ -729,24 +837,63 @@ def list_summaries():
 
 
 class GenSummaryIn(BaseModel):
-    period_type: str   # 周 / 月
-    anchor: str = ""   # 可选锚定日期 YYYY-MM-DD，默认今天
+    period_type: str                      # 周 / 月（写作风格与篇幅）
+    period_start: str = ""                # 开始日期 YYYY-MM-DD
+    period_end: str = ""                  # 结束日期 YYYY-MM-DD
+    anchor: str = ""                      # 兼容旧调用：未给区间时的锚定日期
+    overwrite: bool = False               # 相同区间是否覆盖
 
 
 @app.post("/api/summaries/generate")
 def generate_summary(req: GenSummaryIn):
-    if req.period_type not in ("周", "月"):
-        return JSONResponse(status_code=400, content={
-            "error": "bad_period", "message": "period_type 只能是 周 或 月"})
+    start_str = req.period_start or ""
+    end_str = req.period_end or ""
+    if not start_str or not end_str:
+        # 兼容旧调用：未显式给区间时，按锚定日期推导整周/整月
+        try:
+            anchor_date = date.fromisoformat(req.anchor) if req.anchor else date.today()
+        except ValueError:
+            anchor_date = date.today()
+        start_date, end_date = summarizer.period_range(req.period_type, anchor_date)
+        start_str, end_str = start_date.isoformat(), end_date.isoformat()
     try:
-        content, image_path = summarizer.generate(req.period_type, req.anchor)
+        rng = summary_service.SummaryRange.parse(
+            start_str, end_str, req.period_type)
+    except summary_service.SummaryRangeError as e:
+        return JSONResponse(status_code=400, content={
+            "error": e.code, "message": str(e)})
+    conn = db.get_conn()
+    existing_id = summary_service.find_existing(
+        conn, rng.period_type, rng.start, rng.end)
+    conn.close()
+    if existing_id is not None and not req.overwrite:
+        return JSONResponse(status_code=409, content={
+            "error": "summary_exists",
+            "message": "这个类型和区间已经有总结",
+            "summary_id": existing_id})
+    try:
+        content, image_path, summary_id = summarizer.generate(
+            rng.period_type, rng.start, rng.end)
     except ai.AIUnavailableError as e:
         return JSONResponse(status_code=503, content={
             "error": "ai_unavailable", "message": str(e)})
     except Exception as e:
         return JSONResponse(status_code=500, content={
             "error": "generate_failed", "message": str(e)})
-    return {"ok": True, "content": content, "image_path": image_path}
+    return {"ok": True, "content": content, "image_path": image_path,
+            "summary_id": summary_id, "overwritten": existing_id is not None}
+
+
+@app.delete("/api/summaries/{sid}")
+def delete_summary(sid: int):
+    """删除总结：只影响正文与专属配图，不动账目、目标或对账记录。"""
+    try:
+        result = summary_service.delete_summary(sid)
+    except summary_service.SummaryNotFoundError:
+        return JSONResponse(status_code=404, content={
+            "error": "not_found", "message": "总结不存在"})
+    return {"ok": True, "image_cleanup": result.image_cleanup,
+            "message": result.message}
 
 
 @app.get("/api/summary_image/{sid}")
@@ -761,24 +908,17 @@ def summary_image(sid: int):
 
 def _ledger_balance(cfg: dict, conn) -> float:
     """账本余额 = 初始 + 收入 + 退款 − 支出 − 取现/转账/还款 + 对账差额。"""
-
-    def one(sql: str, *args):
-        return float(conn.execute(sql, args).fetchone()[0] or 0)
-
-    income = one("SELECT SUM(amount) FROM transactions WHERE type = '收入'")
-    refund = one("SELECT SUM(amount) FROM transactions WHERE type = '退款'")
-    expense = one("SELECT SUM(amount) FROM transactions WHERE type = '支出'")
-    transfer_out = one(
-        "SELECT SUM(amount) FROM transactions WHERE type IN ('取现','转账','还款')")
-    adj = one("SELECT SUM(diff) FROM adjustments")
-    return cfg["initial_balance"] + income + refund - expense - transfer_out + adj
+    start = ledger.initial_balance_start(cfg)
+    return ledger.calculate_balance(conn, float(cfg.get("initial_balance") or 0), start)
 
 
 @app.get("/api/summary")
 def summary():
     cfg = load_config()
     conn = db.get_conn()
-    month_start = date.today().replace(day=1).isoformat()
+    month = date.today().strftime("%Y-%m")
+    snap = ledger.monthly_snapshot(conn, cfg, month)
+    month_start = month + "-01"
 
     def one(sql: str, *args):
         row = conn.execute(sql, args).fetchone()
@@ -791,7 +931,7 @@ def summary():
     month_income = one(
         "SELECT SUM(amount) FROM transactions WHERE type = '收入' AND date >= ?", month_start
     )
-    balance = _ledger_balance(cfg, conn)
+    balance = snap.closing_balance
     conn.close()
 
     budget = float(cfg["monthly_budget"] or 0)
@@ -807,6 +947,10 @@ def summary():
 
     return {
         "balance": round(balance, 2),
+        "opening_balance": round(snap.opening_balance, 2),
+        "closing_balance": round(snap.closing_balance, 2),
+        "planned_amount": round(snap.planned_amount, 2),
+        "unplanned_balance": round(snap.unplanned_balance, 2),
         "month_expense": round(month_expense, 2),
         "month_income": round(month_income, 2),
         "monthly_budget": round(budget, 2),
@@ -826,9 +970,63 @@ def get_settings():
 @app.post("/api/settings")
 def set_settings(patch: dict):
     cfg = load_config()
+    # 初始余额与初始日期走受保护的专用接口，普通设置不允许修改
+    for key in ("initial_balance", "initial_balance_date"):
+        patch.pop(key, None)
     cfg.update({k: v for k, v in patch.items() if k in cfg})
     save_config(cfg)
     return {"ok": True}
+
+
+class InitialBalanceIn(BaseModel):
+    initial_balance: float
+    initial_balance_date: str
+
+
+class TestAiIn(BaseModel):
+    api_base: str
+    api_key: str
+    model: str
+
+
+@app.post("/api/settings/test-ai")
+def test_ai_connection(req: TestAiIn):
+    """用未保存的草稿值测试 AI 连接；从不记录 API Key。"""
+    try:
+        ai.test_connection(req.api_base, req.api_key, req.model)
+    except ai.AIUnavailableError as e:
+        return JSONResponse(status_code=503, content={
+            "error": "ai_connection_failed", "message": str(e)})
+    return {"ok": True}
+
+
+@app.post("/api/settings/initial-balance")
+def set_initial_balance(req: InitialBalanceIn):
+    """受保护的初始余额更正：变更前自动做安全备份。"""
+    if not math.isfinite(req.initial_balance):
+        return JSONResponse(status_code=400, content={
+            "error": "bad_amount", "message": "初始余额必须是有效数字"})
+    try:
+        new_date = date.fromisoformat(req.initial_balance_date).isoformat()
+    except ValueError:
+        return JSONResponse(status_code=400, content={
+            "error": "bad_date", "message": "日期格式不正确，应为 YYYY-MM-DD"})
+    cfg = load_config()
+    new_balance = round(req.initial_balance, 2)
+    changed = (
+        float(cfg.get("initial_balance") or 0) != new_balance
+        or str(cfg.get("initial_balance_date") or "") != new_date
+    )
+    if changed and cfg.get("onboarding_completed"):
+        backup.create_backup("pre-initial-balance-change")
+    cfg["initial_balance"] = new_balance
+    cfg["initial_balance_date"] = new_date
+    save_config(cfg)
+    conn = db.get_conn()
+    balance = ledger.calculate_balance(
+        conn, new_balance, date.fromisoformat(new_date))
+    conn.close()
+    return {"ok": True, "balance": round(balance, 2)}
 
 
 # ---------- 前端 ----------
