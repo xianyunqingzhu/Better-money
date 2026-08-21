@@ -95,36 +95,40 @@ def main() -> int:
         clean_tables(data_dir)
 
     # 业务单元/契约套件（pytest，隔离应用目录，禁止触碰仓库数据）
-    pytest_basetemp = test_home / "pytest-basetemp"
-    pytest_basetemp.mkdir(parents=True, exist_ok=True)
-    pytest_command = [
-        sys.executable,
-        "-m",
-        "pytest",
-        *PYTEST_SUITES,
-        "-p",
-        "no:cacheprovider",
-        "--basetemp",
-        str(pytest_basetemp),
-    ]
-    print("== pytest business suites ==", flush=True)
-    pytest_result = subprocess.run(
-        pytest_command,
-        cwd=REPOSITORY_ROOT,
-        env=child_environment,
-        capture_output=True,
-        text=True,
-    )
-    print(
-        pytest_result.stdout.strip().splitlines()[-1]
-        if pytest_result.stdout.strip()
-        else "(no output)",
-        flush=True,
-    )
-    if pytest_result.returncode != 0:
-        print(pytest_result.stdout[-3000:], flush=True)
-        print(pytest_result.stderr[-1500:], flush=True)
-        return 1
+    # CI 会单独跑这些套件；设 BETTER_MONEY_SKIP_NESTED_PYTEST=1 时跳过避免重复。
+    if os.environ.get("BETTER_MONEY_SKIP_NESTED_PYTEST") == "1":
+        print("== pytest business suites skipped (BETTER_MONEY_SKIP_NESTED_PYTEST) ==", flush=True)
+    else:
+        pytest_basetemp = test_home / "pytest-basetemp"
+        pytest_basetemp.mkdir(parents=True, exist_ok=True)
+        pytest_command = [
+            sys.executable,
+            "-m",
+            "pytest",
+            *PYTEST_SUITES,
+            "-p",
+            "no:cacheprovider",
+            "--basetemp",
+            str(pytest_basetemp),
+        ]
+        print("== pytest business suites ==", flush=True)
+        pytest_result = subprocess.run(
+            pytest_command,
+            cwd=REPOSITORY_ROOT,
+            env=child_environment,
+            capture_output=True,
+            text=True,
+        )
+        print(
+            pytest_result.stdout.strip().splitlines()[-1]
+            if pytest_result.stdout.strip()
+            else "(no output)",
+            flush=True,
+        )
+        if pytest_result.returncode != 0:
+            print(pytest_result.stdout[-3000:], flush=True)
+            print(pytest_result.stderr[-1500:], flush=True)
+            return 1
 
     shutil.rmtree(paths.backups_dir, ignore_errors=True)
     paths.config_path.unlink(missing_ok=True)

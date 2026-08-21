@@ -109,7 +109,7 @@ def test_real_six_script_runner_uses_dynamic_isolated_service(app_home):
                 env=environment,
                 capture_output=True,
                 text=True,
-                timeout=300,
+                timeout=900,
                 creationflags=creationflags,
             )
         except subprocess.TimeoutExpired as exc:

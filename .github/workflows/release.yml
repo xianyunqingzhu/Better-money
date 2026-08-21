@@ -11,6 +11,7 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -29,10 +30,23 @@ jobs:
         run: |
           winget install --id JRSoftware.InnoSetup -e --accept-source-agreements --accept-package-agreements --silent
 
-      - name: Run business regression (unit + contract + real six-script runner)
+      - name: Run business regression (unit + contract suites)
         shell: pwsh
         run: |
-          python -m pytest tests/test_real_legacy_runner.py tests/test_server_control.py tests/test_launcher.py -p no:cacheprovider
+          python -m pytest -q -p no:cacheprovider `
+            tests/test_paths.py tests/test_migrations.py tests/test_backup.py `
+            tests/test_legacy_migration.py tests/test_data_api.py tests/test_startup_recovery.py `
+            tests/test_run_all_guard.py tests/test_goals.py tests/test_goal_ui_contract.py `
+            tests/test_summaries_api.py tests/test_summary_ui_contract.py tests/test_ledger.py `
+            tests/test_onboarding_ui_contract.py tests/test_ai_settings.py tests/test_uploads.py `
+            tests/test_server_control.py tests/test_launcher.py
+
+      - name: Run real six-script end-to-end runner
+        shell: pwsh
+        env:
+          BETTER_MONEY_SKIP_NESTED_PYTEST: "1"
+        run: |
+          python -m pytest -q -p no:cacheprovider tests/test_real_legacy_runner.py
 
       - name: Build PyInstaller bundle
         shell: pwsh
