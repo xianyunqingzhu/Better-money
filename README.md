@@ -17,6 +17,18 @@
 
 完整设计见 `设计文档.md`，**详细使用教程见 `使用说明.md`**。
 
+## 📦 下载与安装（Windows）
+
+安装包不放在代码仓库里，请到 **[Releases 页面](https://github.com/xianyunqingzhu/Better-money/releases)** 下载：
+
+1. 下载最新版 `BetterMoney-Setup-<版本>.exe`（同页 `SHA256SUMS.txt` 可校验）
+2. 双击安装（默认 `Program Files\Better Money`，可改路径；需要一次管理员授权）
+3. 装完从桌面/开始菜单打开 Better-money——无需安装 Python，首次打开即四步引导
+4. 个人数据保存在 `%LOCALAPPDATA%\BetterMoney`，升级/卸载默认不丢数据
+
+> 首次运行若出现 SmartScreen「Windows 已保护你的电脑」，点「更多信息 → 仍要运行」。
+> 每次推送 `v*` 标签（如 `v1.0.0`）会自动构建并挂载新安装包到 Release。
+
 ## 快速开始
 
 ### Windows

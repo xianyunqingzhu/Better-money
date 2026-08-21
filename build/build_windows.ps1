@@ -11,6 +11,10 @@ $SpecPath = Join-Path $PSScriptRoot "better-money.spec"
 $DistPath = Join-Path $RepoRoot "dist"
 $WorkPath = Join-Path $RepoRoot "build-output\pyinstaller"
 $VenvPython = Join-Path $RepoRoot ".venv\Scripts\python.exe"
+if (-not (Test-Path $VenvPython)) {
+    # CI / 干净环境：没有 .venv 时退回 PATH 上的 Python
+    $VenvPython = (Get-Command python -ErrorAction Stop).Source
+}
 
 # 只支持 64 位 Windows
 if (-not [Environment]::Is64BitOperatingSystem) {
