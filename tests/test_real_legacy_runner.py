@@ -64,6 +64,10 @@ def test_real_six_script_runner_uses_dynamic_isolated_service(app_home):
     environment["BETTER_MONEY_HOME"] = str(app_home)
     environment["BETTER_MONEY_TEST_BASE_URL"] = base_url
     environment["PYTHONUNBUFFERED"] = "1"
+    # 子进程（服务、run_all 与六个 E2E 脚本）输出统一 UTF-8：
+    # GitHub 英文系统默认 cp1252，脚本打印中文会 UnicodeEncodeError。
+    environment["PYTHONUTF8"] = "1"
+    environment["PYTHONIOENCODING"] = "utf-8"
     creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     server = subprocess.Popen(
         [
@@ -82,6 +86,8 @@ def test_real_six_script_runner_uses_dynamic_isolated_service(app_home):
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         creationflags=creationflags,
     )
     try:
@@ -109,6 +115,8 @@ def test_real_six_script_runner_uses_dynamic_isolated_service(app_home):
                 env=environment,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=900,
                 creationflags=creationflags,
             )

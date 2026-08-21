@@ -79,6 +79,8 @@ def main() -> int:
             [sys.executable, str(REPOSITORY_ROOT / script)],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             env=child_environment,
         )
         print(f"== {name} exit={result.returncode}", flush=True)
@@ -118,6 +120,8 @@ def main() -> int:
             env=child_environment,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         print(
             pytest_result.stdout.strip().splitlines()[-1]
