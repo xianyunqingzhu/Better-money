@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#F6F4EF" />
+  <title>Better-money</title>
+  <link rel="stylesheet" href="/src/styles.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- 横向两页 -->
+    <div class="pages" id="pages">
+      <!-- 页面一：概览与记账 -->
+      <section class="page" id="page-home">
+        <header class="topbar">
+          <div class="topbar-title">
+            <span class="brand">Better-money</span>
+            <span class="topbar-month" id="home-month"></span>
+          </div>
+          <span class="sync-pill" id="sync-pill"></span>
+        </header>
+        <div class="scroll" id="home-scroll">
+          <div class="stat-grid" id="stat-grid"></div>
+          <div class="budget-alert hidden" id="budget-alert"></div>
+          <button class="btn primary big-entry" id="entry-btn">记一笔</button>
+          <div class="manual-entry card">
+            <h3>手动记账</h3>
+            <div id="quick-form"></div>
+          </div>
+          <div class="image-entry card">
+            <h3>小票 / 截图识别</h3>
+            <div class="btn-row">
+              <button class="btn ghost" id="img-camera">拍照识别小票</button>
+              <button class="btn ghost" id="img-gallery">从相册选择</button>
+            </div>
+            <p class="muted small" id="image-status"></p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 页面二：分析、历史与入口 -->
+      <section class="page" id="page-insights">
+        <header class="topbar">
+          <div class="topbar-title">
+            <span class="brand">Better-money</span>
+            <span class="topbar-month">分析与历史</span>
+          </div>
+        </header>
+        <div class="insight-entries">
+          <button class="entry-chip" id="go-entry-goals">目标清单</button>
+          <button class="entry-chip" id="go-entry-summaries">总结</button>
+          <button class="entry-chip" id="go-entry-settings">设置</button>
+        </div>
+        <div class="scroll" id="insights-scroll">
+          <div class="card">
+            <h3>分类占比<span class="muted small" id="cat-month-label"></span></h3>
+            <div class="chart-box" id="chart-cat"></div>
+            <div id="cat-list" class="cat-list"></div>
+          </div>
+          <div class="card">
+            <h3>支出趋势（近 30 天）</h3>
+            <div class="chart-box" id="chart-daily"></div>
+          </div>
+          <div class="card">
+            <h3>周对比（近 8 周）</h3>
+            <div class="chart-box" id="chart-week"></div>
+          </div>
+          <div class="card">
+            <h3>目标进度</h3>
+            <div id="goal-progress"></div>
+          </div>
+          <div class="card">
+            <h3>历史记录</h3>
+            <div class="filter-row" id="history-filters"></div>
+            <div id="history-list"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- 记一笔底部抽屉 -->
+    <div class="sheet hidden" id="entry-sheet">
+      <div class="sheet-backdrop" data-close-sheet="entry-sheet"></div>
+      <div class="sheet-box">
+        <div class="sheet-head">
+          <h2 id="entry-title">记一笔</h2>
+          <button class="icon-btn" data-close-sheet="entry-sheet">✕</button>
+        </div>
+        <div class="sheet-body" id="entry-body"></div>
+      </div>
+    </div>
+
+    <!-- AI 解析确认面板 -->
+    <div class="sheet hidden" id="confirm-sheet">
+      <div class="sheet-backdrop" data-close-sheet="confirm-sheet"></div>
+      <div class="sheet-box tall">
+        <div class="sheet-head">
+          <h2 id="confirm-title">确认入账</h2>
+          <button class="icon-btn" data-close-sheet="confirm-sheet">✕</button>
+        </div>
+        <div class="sheet-body" id="confirm-body"></div>
+        <div class="sheet-foot">
+          <button class="btn ghost" data-close-sheet="confirm-sheet">取消</button>
+          <button class="btn primary" id="confirm-save">确认入账</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 全屏子页：目标清单 -->
+    <div class="overlay hidden" id="overlay-goals">
+      <div class="overlay-head">
+        <button class="btn ghost back-btn" data-close-overlay="overlay-goals">‹ 返回</button>
+        <h2>目标清单</h2>
+        <button class="btn primary" id="goal-add">＋ 新建</button>
+      </div>
+      <div class="overlay-body" id="goals-body"></div>
+    </div>
+
+    <!-- 全屏子页：总结 -->
+    <div class="overlay hidden" id="overlay-summaries">
+      <div class="overlay-head">
+        <button class="btn ghost back-btn" data-close-overlay="overlay-summaries">‹ 返回</button>
+        <h2>总结</h2>
+      </div>
+      <div class="overlay-body" id="summaries-body"></div>
+    </div>
+
+    <!-- 全屏子页：设置 -->
+    <div class="overlay hidden" id="overlay-settings">
+      <div class="overlay-head">
+        <button class="btn ghost back-btn" data-close-overlay="overlay-settings">‹ 返回</button>
+        <h2>设置</h2>
+        <button class="btn primary" id="settings-save">保存</button>
+      </div>
+      <div class="overlay-body" id="settings-body"></div>
+    </div>
+
+    <!-- 目标编辑弹层 -->
+    <div class="sheet hidden" id="goal-sheet">
+      <div class="sheet-backdrop" data-close-sheet="goal-sheet"></div>
+      <div class="sheet-box">
+        <div class="sheet-head">
+          <h2 id="goal-sheet-title">新建目标</h2>
+          <button class="icon-btn" data-close-sheet="goal-sheet">✕</button>
+        </div>
+        <div class="sheet-body" id="goal-sheet-body"></div>
+      </div>
+    </div>
+
+    <!-- 共享包导入预览 -->
+    <div class="sheet hidden" id="share-sheet">
+      <div class="sheet-backdrop"></div>
+      <div class="sheet-box tall">
+        <div class="sheet-head">
+          <h2>导入共享包</h2>
+          <button class="icon-btn" data-close-sheet="share-sheet">✕</button>
+        </div>
+        <div class="sheet-body" id="share-preview"></div>
+        <div class="sheet-foot">
+          <button class="btn ghost" data-close-sheet="share-sheet">取消</button>
+          <button class="btn primary" id="share-apply">确认导入</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 图片预览 -->
+    <div class="sheet hidden" id="image-sheet">
+      <div class="sheet-backdrop" data-close-sheet="image-sheet"></div>
+      <div class="sheet-box tall">
+        <div class="sheet-head">
+          <h2>图片识别</h2>
+          <button class="icon-btn" data-close-sheet="image-sheet">✕</button>
+        </div>
+        <div class="sheet-body" id="image-sheet-body"></div>
+        <div class="sheet-foot">
+          <button class="btn ghost" data-close-sheet="image-sheet">取消</button>
+          <button class="btn primary" id="image-recognize">开始识别</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

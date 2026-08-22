@@ -1,0 +1,34 @@
+{
+  "name": "better-money-mobile",
+  "version": "1.1.0",
+  "description": "Better-money Android 手机端（Capacitor + TypeScript）",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "cap:sync": "npm run build && cap sync android",
+    "cap:android": "cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/camera": "^8.2.3",
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/filesystem": "^8.1.3",
+    "@capacitor/share": "^8.0.1",
+    "@capawesome/capacitor-file-picker": "^8.0.4",
+    "echarts": "^6.1.0",
+    "jszip": "^3.10.1",
+    "sql.js": "^1.14.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.0",
+    "@types/sql.js": "^1.4.11",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
+  }
+}
