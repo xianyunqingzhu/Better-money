@@ -157,7 +157,8 @@ def test_init_db_creates_pre_migration_backup_for_existing_legacy_database():
 
     db.init_db()
 
-    backups = list(paths.backups_dir.glob("pre-migration-v0-to-v2-*.db"))
+    backups = list(paths.backups_dir.glob(
+        f"pre-migration-v0-to-v{CURRENT_SCHEMA_VERSION}-*.db"))
     assert len(backups) == 1
     backup = sqlite3.connect(backups[0])
     try:

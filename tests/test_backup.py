@@ -433,8 +433,8 @@ def test_inspect_rejects_zip64_extensible_data_unsupported_by_cpython(
     with archive.open("rb") as source:
         selected_by_cpython = zipfile._EndRecData(source)
     assert selected_by_cpython is not None
-    assert selected_by_cpython[0] == b"PK\x05\x06"
-    assert selected_by_cpython[5] == 0xFFFFFFFF
+    # 3.12 返回经典 EOCD（0xFFFFFFFF 哨兵），3.13 直接返回 Zip64 记录。
+    assert selected_by_cpython[0] in (b"PK\x05\x06", b"PK\x06\x06")
 
     def forbidden_zipfile_construction(*args, **kwargs):
         raise AssertionError("ZipFile parsed unsupported Zip64 extensible data")

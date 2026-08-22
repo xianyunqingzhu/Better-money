@@ -822,7 +822,9 @@ def test_current_schema_rejects_line_items_without_declared_foreign_key(tmp_path
                 transaction_id INTEGER NOT NULL,
                 name TEXT NOT NULL,
                 qty REAL DEFAULT 1,
-                price REAL DEFAULT 0
+                price REAL DEFAULT 0,
+                uuid TEXT NOT NULL DEFAULT '',
+                updated_at TEXT NOT NULL DEFAULT ''
             );
             INSERT INTO line_items SELECT * FROM old_line_items;
             DROP TABLE old_line_items;

@@ -55,9 +55,11 @@ def calculate_balance(
     through_date: date | None = None,
 ) -> float:
     """Balance after all transactions from start_date up to through_date."""
-    cond = "date >= ?"
+    date_cond = "date >= ?"
+    cond = "deleted_at = '' AND date >= ?"
     args: list[str] = [start_date.isoformat()]
     if through_date is not None:
+        date_cond += " AND date <= ?"
         cond += " AND date <= ?"
         args.append(through_date.isoformat())
 
@@ -70,7 +72,7 @@ def calculate_balance(
     transfer_out = one(
         f"SELECT SUM(amount) FROM transactions "
         f"WHERE type IN ('取现','转账','还款') AND {cond}", *args)
-    adjustments = one(f"SELECT SUM(diff) FROM adjustments WHERE {cond}", *args)
+    adjustments = one(f"SELECT SUM(diff) FROM adjustments WHERE {date_cond}", *args)
     total = initial_balance + income + refund - expense - transfer_out + adjustments
     return round(total, 2)
 
@@ -88,13 +90,13 @@ def monthly_snapshot(conn: sqlite3.Connection, cfg: dict, month: str) -> LedgerS
 
     s, e = first.isoformat(), last.isoformat()
     income = one(
-        "SELECT SUM(amount) FROM transactions WHERE type='收入' AND date BETWEEN ? AND ?", s, e)
+        "SELECT SUM(amount) FROM transactions WHERE deleted_at = '' AND type='收入' AND date BETWEEN ? AND ?", s, e)
     refund = one(
-        "SELECT SUM(amount) FROM transactions WHERE type='退款' AND date BETWEEN ? AND ?", s, e)
+        "SELECT SUM(amount) FROM transactions WHERE deleted_at = '' AND type='退款' AND date BETWEEN ? AND ?", s, e)
     expense = one(
-        "SELECT SUM(amount) FROM transactions WHERE type='支出' AND date BETWEEN ? AND ?", s, e)
+        "SELECT SUM(amount) FROM transactions WHERE deleted_at = '' AND type='支出' AND date BETWEEN ? AND ?", s, e)
     transfer_out = one(
-        "SELECT SUM(amount) FROM transactions WHERE type IN ('取现','转账','还款') "
+        "SELECT SUM(amount) FROM transactions WHERE deleted_at = '' AND type IN ('取现','转账','还款') "
         "AND date BETWEEN ? AND ?", s, e)
     adjustments = one(
         "SELECT SUM(diff) FROM adjustments WHERE date BETWEEN ? AND ?", s, e)
@@ -119,7 +121,7 @@ def planned_amount(conn: sqlite3.Connection) -> float:
     """Total still-earmarked savings across cold-period, active, paused goals."""
     row = conn.execute(
         "SELECT SUM(MIN(saved, price)) FROM goals "
-        "WHERE status IN ('冷静期','进行中','已暂停')"
+        "WHERE deleted_at = '' AND status IN ('冷静期','进行中','已暂停')"
     ).fetchone()
     return round(float(row[0] or 0), 2)
 
@@ -146,7 +148,8 @@ def ensure_finance_config(conn: sqlite3.Connection, raw_cfg: dict, save) -> dict
 
     if not str(merged.get("initial_balance_date") or "").strip():
         row = conn.execute(
-            "SELECT MIN(date) FROM transactions WHERE date <> '' AND date IS NOT NULL"
+            "SELECT MIN(date) FROM transactions "
+            "WHERE deleted_at = '' AND date <> '' AND date IS NOT NULL"
         ).fetchone()
         merged["initial_balance_date"] = (
             row[0] if row and row[0] else date.today().isoformat()

@@ -13,6 +13,15 @@ import httpx
 from app.paths import get_paths
 
 BASE = os.environ.get("BETTER_MONEY_TEST_BASE_URL", "http://127.0.0.1:8642")
+
+# 隔离守卫：这些脚本直接向运行中的服务写数据。没有显式隔离目录时拒绝运行，
+# 防止误伤安装版真实账本（正确跑法：pytest tests/test_real_legacy_runner.py，
+# 或先设置 BETTER_MONEY_HOME 指向临时目录并启动对应服务）。
+if not os.environ.get("BETTER_MONEY_HOME"):
+    raise SystemExit(
+        "refusing to run E2E script without BETTER_MONEY_HOME; "
+        "use the isolated runner: pytest tests/test_real_legacy_runner.py"
+    )
 today = date.today().isoformat()
 
 # 共享持久客户端：Windows 上每新建一次 httpx 客户端都要重建 SSL 上下文

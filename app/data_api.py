@@ -21,6 +21,7 @@ from starlette.background import BackgroundTask
 from starlette.concurrency import run_in_threadpool
 
 from app import backup as backup_service
+from app import sync
 from app.backup import (
     BackupManifest,
     InvalidBackupError,
@@ -530,6 +531,7 @@ def import_migration(request: ImportLegacyRequest):
         return _error(400, MIGRATION_FAILED)
     try:
         inspection = import_legacy(source, request.initial_balance_date)
+        sync.reset_identity_cache()  # 整库替换后重新登记本机设备身份
     except LegacyRecoveryIncompleteError:
         logger.error("Legacy migration recovery incomplete")
         return _error(500, MIGRATION_RECOVERY_INCOMPLETE)

@@ -20,7 +20,7 @@ def allocate_savings(
     allocations: list[GoalAllocation] = []
     rows = conn.execute(
         "SELECT id, name, price, saved FROM goals "
-        "WHERE status IN ('冷静期','进行中') AND saved < price "
+        "WHERE deleted_at = '' AND status IN ('冷静期','进行中') AND saved < price "
         "ORDER BY priority, id"
     ).fetchall()
     for goal_id, goal_name, price, saved in rows:

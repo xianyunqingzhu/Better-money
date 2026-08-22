@@ -35,8 +35,8 @@ MAX_ARCHIVE_MEMBERS = 4096
 MAX_MEMBER_EXPANDED_BYTES = 2 * 1024 * 1024 * 1024
 MAX_TOTAL_EXPANDED_BYTES = 4 * 1024 * 1024 * 1024
 MAX_JSON_BYTES = 1024 * 1024
-MAX_COMPRESSION_RATIO = 1000
-MIN_COMPRESSION_RATIO_BYTES = 1024 * 1024
+MAX_COMPRESSION_RATIO = 200
+MIN_COMPRESSION_RATIO_BYTES = 4096
 MAX_AGGREGATE_COMPRESSION_RATIO = 100
 MIN_AGGREGATE_EXPANDED_BYTES = 128 * 1024
 MAX_CENTRAL_DIRECTORY_BYTES = 16 * 1024 * 1024
@@ -173,12 +173,29 @@ def _find_eocd(source, archive_size: int) -> tuple[int, bytes, list[Any]]:
     if archive_size < minimum_size:
         raise InvalidBackupError("backup ZIP end record is missing")
     selected = zipfile._EndRecData(source)
-    if selected is None:
+    if not selected:
         raise InvalidBackupError("backup ZIP end record is missing")
     offset = selected[-1]
     if type(offset) is not int or offset < 0:
         raise InvalidBackupError("backup ZIP end record offset is invalid")
     eocd = _read_exact_at(source, offset, minimum_size)
+    if eocd[:4] == _ZIP64_EOCD_SIGNATURE:
+        # Python 3.13 起，_EndRecData 在存在 Zip64 尾记录时直接返回该记录
+        # 本身；经典 EOCD 位于「Zip64 记录 + 20 字节定位器」之后。
+        # Zip64 记录总长 = 4(签名) + 8(size 字段) + size。
+        zip64_size = struct.unpack_from("<Q", eocd, 4)[0]
+        if (
+            zip64_size < 44
+            or offset + 12 + zip64_size + 20 + minimum_size > archive_size
+        ):
+            raise InvalidBackupError("backup Zip64 end record is invalid")
+        locator = _read_exact_at(source, offset + 12 + zip64_size, 20)
+        if locator[:4] != _ZIP64_LOCATOR_SIGNATURE:
+            raise InvalidBackupError("backup Zip64 locator is missing")
+        offset = offset + 12 + zip64_size + 20
+        eocd = _read_exact_at(source, offset, minimum_size)
+        if eocd[:4] != _EOCD_SIGNATURE:
+            raise InvalidBackupError("backup ZIP end record is missing")
     comment_size = struct.unpack_from("<H", eocd, 20)[0]
     if offset + minimum_size + comment_size != archive_size:
         raise InvalidBackupError("backup ZIP comment length is invalid")

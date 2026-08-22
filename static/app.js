@@ -981,7 +981,8 @@ async function loadSettings() {
   $('#s-api-base').value = s.api_base;
   $('#s-api-key').value = s.api_key;
   $('#s-model').value = s.model_text;
-  await Promise.all([loadAdjustments(), loadLatestBackup()]);
+  $('#s-device-name').value = s.device_name || '电脑';
+  await Promise.all([loadAdjustments(), loadLatestBackup(), loadShareStatus()]);
 }
 
 async function saveSettings() {
@@ -993,6 +994,7 @@ async function saveSettings() {
     api_base: $('#s-api-base').value.trim(),
     api_key: $('#s-api-key').value.trim(),
     model_text: $('#s-model').value.trim(),
+    device_name: $('#s-device-name').value.trim() || '电脑',
   };
   const data = await requestJson('/api/settings', {
     method: 'POST',
@@ -1329,6 +1331,226 @@ function bindTabs() {
   });
 }
 
+/* ---------- 数据与共享（手机端） ---------- */
+
+let shareToken = null;
+
+async function loadShareStatus() {
+  const st = await (await fetch('/api/share/status')).json().catch(() => null);
+  if (!st) { $('#share-status').textContent = '共享状态不可用'; return; }
+  const parts = [];
+  parts.push(`本机「${st.device_name}」`);
+  parts.push(st.pending_changes > 0
+    ? `有 <b>${st.pending_changes}</b> 处待同步变化`
+    : '已同步（无待同步变化）');
+  if (st.last_export_at) parts.push(`上次导出 ${st.last_export_at}`);
+  if (st.last_import_at) parts.push(`上次导入 ${st.last_import_at}`);
+  $('#share-status').innerHTML = parts.join('；');
+  const events = await (await fetch('/api/share/events')).json().catch(() => []);
+  const box = $('#share-events');
+  if (!events.length) {
+    box.innerHTML = '<p class="todo-note">还没有同步记录。</p>';
+    return;
+  }
+  box.innerHTML = events.slice(0, 8).map((e) => {
+    const when = e.direction === 'export' ? e.exported_at : e.imported_at;
+    const conflicts = e.conflict_dates
+      ? `（冲突日期：${e.conflict_dates}）` : '';
+    return `<div class="adj-item"><span class="adj-date">${e.direction === 'export' ? '导出' : '导入'} ${when}</span>` +
+      `<span class="adj-note">${escapeHtml(e.result || '')}${conflicts}</span></div>`;
+  }).join('');
+}
+
+function shareSideLabel(side, rec, kind) {
+  if (!rec) {
+    return kind === 'delete_vs_modify' ? '已删除' : '—';
+  }
+  const type = rec.type ? `${rec.type} ` : '';
+  const amt = `¥${Number(rec.amount).toFixed(2)}`;
+  const extra = [rec.category, rec.merchant, rec.note].filter(Boolean).join(' / ');
+  return `${type}${amt}${extra ? ' · ' + extra : ''}`;
+}
+
+async function openShareImport(file) {
+  const form = new FormData();
+  form.append('file', file);
+  let preview;
+  try {
+    const res = await fetch('/api/share/preview', { method: 'POST', body: form });
+    preview = await res.json();
+    if (!res.ok) {
+      alert((preview && preview.message) || '共享包无效');
+      return;
+    }
+  } catch (e) {
+    alert('上传失败：' + e);
+    return;
+  }
+
+  shareToken = preview.token;
+  const pkg = preview.package;
+  const s = preview.summary;
+  const html = [];
+
+  html.push(`<p class="muted">来自 <b>${escapeHtml(pkg.device_name)}</b>（${pkg.platform === 'mobile' ? '手机' : '电脑'}）· ` +
+    `交易 ${pkg.counts.transactions} 笔、目标 ${pkg.counts.goals} 个 · ` +
+    `${pkg.date_min || '—'} ~ ${pkg.date_max || '—'}</p>`);
+
+  const changes = [];
+  if (s.add_transactions) changes.push(`新增交易 ${s.add_transactions}`);
+  if (s.modify_transactions) changes.push(`修改交易 ${s.modify_transactions}`);
+  if (s.delete_transactions) changes.push(`删除交易 ${s.delete_transactions}`);
+  const goalChanges = s.add_goals + s.modify_goals + s.delete_goals;
+  if (goalChanges) changes.push(`目标变化 ${goalChanges}`);
+  if (s.new_tombstones) changes.push(`删除标记 ${s.new_tombstones}`);
+  html.push(`<p>${changes.length ? '将自动合并：' + changes.join('、') : '没有需要合并的变化。'}</p>`);
+
+  // 设置冲突
+  if (s.conflict_days.length || s.goal_conflicts.length) {
+    html.push('<p class="todo-note">存在需要人工处理的冲突，请逐项选择。</p>');
+  }
+  if (preview.settings.conflict) {
+    html.push(`<div class="share-settings">
+      <b>公开账本设置不同：</b><br>
+      <span class="muted">本机：余额 ${preview.settings.local.initial_balance}（起始 ${preview.settings.local.initial_balance_date || '—'}）· 预算 ${preview.settings.local.monthly_budget} · 自动存 ${preview.settings.local.auto_save_ratio} · 冷静期 ${preview.settings.local.cooldown_days} 天</span><br>
+      <span class="muted">包内：余额 ${preview.settings.package.initial_balance}（起始 ${preview.settings.package.initial_balance_date || '—'}）· 预算 ${preview.settings.package.monthly_budget} · 自动存 ${preview.settings.package.auto_save_ratio} · 冷静期 ${preview.settings.package.cooldown_days} 天</span><br>
+      <label><input type="radio" name="share-settings" value="keep_local" checked> 保留本机设置（推荐）</label>
+      <label><input type="radio" name="share-settings" value="apply_package"> 应用包内设置</label>
+    </div>`);
+  }
+
+  // 按天冲突
+  for (const day of s.conflict_days) {
+    const itemsHtml = day.items.map((item) => {
+      const localTxt = shareSideLabel('local', item.local, item.kind);
+      const peerTxt = shareSideLabel('peer', item.peer, item.kind);
+      const kindTxt = item.kind === 'delete_vs_modify' ? '删除 vs 修改' :
+        item.kind === 'resurrect' ? '复活 vs 删除' : '两边都改过';
+      return `<div class="share-item" data-uuid="${item.uuid}">
+        <div class="share-item-rows">
+          <span class="share-item-side"><b>本机：</b>${escapeHtml(localTxt)}</span>
+          <span class="share-item-side"><b>包内：</b>${escapeHtml(peerTxt)}</span>
+          <span class="muted">${kindTxt}</span>
+        </div>
+        <select class="share-item-choice" data-uuid="${item.uuid}">
+          <option value="local" selected>保留本机</option>
+          <option value="peer">采用包内</option>
+          <option value="drop">都不保留</option>
+        </select>
+      </div>`;
+    }).join('');
+    html.push(`<div class="share-day" data-day="${day.date}">
+      <div class="share-day-head">
+        <b>${day.date}</b>
+        <span class="share-day-actions">
+          <button type="button" class="mini share-mode active" data-mode="keep_local">保留本机这一天</button>
+          <button type="button" class="mini share-mode" data-mode="keep_peer">使用包内这一天</button>
+          <button type="button" class="mini share-mode" data-mode="merge">合并两边</button>
+        </span>
+      </div>
+      <div class="share-items hidden">${itemsHtml}</div>
+    </div>`);
+  }
+
+  // 目标冲突
+  for (const item of s.goal_conflicts) {
+    const localTxt = item.local ? `${item.local.name} · 已存 ¥${Number(item.local.saved).toFixed(2)}（${item.local.status}）` : (item.kind === 'delete_vs_modify' ? '已删除' : '—');
+    const peerTxt = item.peer ? `${item.peer.name} · 已存 ¥${Number(item.peer.saved).toFixed(2)}（${item.peer.status}）` : '包内已删除';
+    const kindTxt = item.kind === 'delete_vs_modify' ? '删除 vs 修改（必须选择）' :
+      item.kind === 'resurrect' ? '复活 vs 删除' : '两边都改过';
+    const suggested = item.suggested || 'local';
+    html.push(`<div class="share-item">
+      <div class="share-item-rows">
+        <span class="share-item-side"><b>本机目标：</b>${escapeHtml(localTxt)}</span>
+        <span class="share-item-side"><b>包内目标：</b>${escapeHtml(peerTxt)}</span>
+        <span class="muted">${kindTxt}</span>
+      </div>
+      <select class="share-goal-choice" data-uuid="${item.uuid}">
+        <option value="local" ${suggested === 'local' ? 'selected' : ''}>保留本机</option>
+        <option value="peer" ${suggested === 'peer' ? 'selected' : ''}>采用包内</option>
+        <option value="drop">都不保留</option>
+      </select>
+    </div>`);
+  }
+
+  // 疑似重复
+  for (const d of s.dupes) {
+    html.push(`<div class="share-item">
+      <div class="share-item-rows">
+        <span class="share-item-side">疑似重复：${d.date} ¥${d.amount} ${escapeHtml(d.merchant || '')}（本机已有相同记录）</span>
+      </div>
+      <label class="muted"><input type="checkbox" class="share-dupe-drop" data-uuid="${d.uuid}"> 丢弃包内这笔</label>
+    </div>`);
+  }
+
+  $('#share-preview').innerHTML = html.join('');
+  document.querySelectorAll('.share-mode').forEach((b) => {
+    b.addEventListener('click', () => {
+      const dayEl = b.closest('.share-day');
+      dayEl.querySelectorAll('.share-mode').forEach((x) => x.classList.remove('active'));
+      b.classList.add('active');
+      dayEl.querySelector('.share-items').classList.toggle('hidden', b.dataset.mode !== 'merge');
+    });
+  });
+  $('#share-modal').classList.remove('hidden');
+}
+
+function closeShareImport() {
+  $('#share-modal').classList.add('hidden');
+  $('#share-preview').innerHTML = '';
+  shareToken = null;
+}
+
+async function applyShareImport() {
+  if (!shareToken) return;
+  const days = {};
+  document.querySelectorAll('.share-day').forEach((dayEl) => {
+    const modeBtn = dayEl.querySelector('.share-mode.active');
+    const mode = modeBtn ? modeBtn.dataset.mode : 'keep_local';
+    const items = {};
+    dayEl.querySelectorAll('.share-item-choice').forEach((sel) => {
+      items[sel.dataset.uuid] = sel.value;
+    });
+    days[dayEl.dataset.day] = { mode, items };
+  });
+  const goals = {};
+  document.querySelectorAll('.share-goal-choice').forEach((sel) => {
+    goals[sel.dataset.uuid] = sel.value;
+  });
+  const dupes = {};
+  document.querySelectorAll('.share-dupe-drop:checked').forEach((cb) => {
+    dupes[cb.dataset.uuid] = 'drop';
+  });
+  const settingsRadio = document.querySelector('input[name="share-settings"]:checked');
+  const decisions = {
+    settings: settingsRadio ? settingsRadio.value : 'keep_local',
+    days, goals, dupes,
+  };
+  const res = await fetch('/api/share/apply', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token: shareToken, decisions }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    alert((data && data.message) || '导入失败，账本未改变');
+    return;
+  }
+  closeShareImport();
+  showToast(`导入完成：新增交易 ${data.add_transactions || 0}、修改 ${data.modify_transactions || 0}、删除 ${data.delete_transactions || 0}`, 'success');
+  await Promise.all([loadShareStatus(), loadLatestBackup()]);
+  refresh();
+  loadHistory();
+  loadGoals();
+  loadStats();
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[ch]));
+}
+
 /* ---------- 初始化 ---------- */
 
 async function init() {
@@ -1355,6 +1577,7 @@ async function init() {
     if (e.key !== 'Escape') return;
     if (!$('#confirm-modal').classList.contains('hidden')) closeConfirm();
     if (!$('#summary-modal').classList.contains('hidden')) closeSummaryModal();
+    if (!$('#share-modal').classList.contains('hidden')) closeShareImport();
   });
   $('#month-select').addEventListener('change', (e) => {
     currentMonth = e.target.value;
@@ -1398,6 +1621,21 @@ async function init() {
   });
   $('#b-open-folder').addEventListener('click', openDataFolder);
   $('#s-shutdown').addEventListener('click', shutdownService);
+  // 数据与共享
+  $('#share-import-btn').addEventListener('click', () => $('#share-import-file').click());
+  $('#share-import-file').addEventListener('change', (e) => {
+    if (e.target.files[0]) openShareImport(e.target.files[0]);
+    e.target.value = '';
+  });
+  $('#share-cancel').addEventListener('click', closeShareImport);
+  $('#share-apply').addEventListener('click', applyShareImport);
+  $('#share-modal').addEventListener('click', (e) => {
+    if (e.target === $('#share-modal')) closeShareImport();
+  });
+  $('#share-export').addEventListener('click', () => {
+    showToast('正在导出共享包…', 'info');
+    loadShareStatus();
+  });
   // 首次引导
   $('#onboard-new').addEventListener('click', () => {
     $('#onboard-migrate-box').classList.add('hidden');

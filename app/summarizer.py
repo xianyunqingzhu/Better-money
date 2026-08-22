@@ -62,19 +62,19 @@ def gather(period_type: str, start: date, end: date) -> dict:
 
     expense = one(
         f"SELECT {_sum_expr('amount')} FROM transactions "
-        "WHERE type IN ('支出','退款') AND date BETWEEN ? AND ?", s, e)
+        "WHERE deleted_at = '' AND type IN ('支出','退款') AND date BETWEEN ? AND ?", s, e)
     income = one(
-        "SELECT SUM(amount) FROM transactions WHERE type='收入' AND date BETWEEN ? AND ?", s, e)
+        "SELECT SUM(amount) FROM transactions WHERE deleted_at = '' AND type='收入' AND date BETWEEN ? AND ?", s, e)
     txs = conn.execute(
-        "SELECT * FROM transactions WHERE type IN ('支出','退款','收入') "
+        "SELECT * FROM transactions WHERE deleted_at = '' AND type IN ('支出','退款','收入') "
         "AND date BETWEEN ? AND ? ORDER BY date, id", (s, e)).fetchall()
     cat_rows = conn.execute(
         f"SELECT category, {_sum_expr('amount')} AS t FROM transactions "
-        "WHERE type IN ('支出','退款') AND date BETWEEN ? AND ? "
+        "WHERE deleted_at = '' AND type IN ('支出','退款') AND date BETWEEN ? AND ? "
         "GROUP BY category HAVING t > 0 ORDER BY t DESC", (s, e)).fetchall()
     merchant_rows = conn.execute(
         "SELECT merchant, SUM(amount) AS t FROM transactions "
-        "WHERE type='支出' AND merchant <> '' AND date BETWEEN ? AND ? "
+        "WHERE deleted_at = '' AND type='支出' AND merchant <> '' AND date BETWEEN ? AND ? "
         "GROUP BY merchant ORDER BY t DESC LIMIT 5", (s, e)).fetchall()
 
     big = [t for t in txs if t["type"] == "支出" and t["amount"] >= 100]
@@ -90,29 +90,30 @@ def gather(period_type: str, start: date, end: date) -> dict:
     prev_start, prev_end = start - timedelta(days=length), start - timedelta(days=1)
     prev_expense = one(
         f"SELECT {_sum_expr('amount')} FROM transactions "
-        "WHERE type IN ('支出','退款') AND date BETWEEN ? AND ?",
+        "WHERE deleted_at = '' AND type IN ('支出','退款') AND date BETWEEN ? AND ?",
         prev_start.isoformat(), prev_end.isoformat())
     prev_cat_rows = conn.execute(
         f"SELECT category, {_sum_expr('amount')} AS t FROM transactions "
-        "WHERE type IN ('支出','退款') AND date BETWEEN ? AND ? "
+        "WHERE deleted_at = '' AND type IN ('支出','退款') AND date BETWEEN ? AND ? "
         "GROUP BY category HAVING t > 0", (prev_start.isoformat(), prev_end.isoformat())).fetchall()
 
     goals = conn.execute(
-        "SELECT name, price, saved, status FROM goals ORDER BY priority, id").fetchall()
+        "SELECT name, price, saved, status FROM goals "
+        "WHERE deleted_at = '' ORDER BY priority, id").fetchall()
     cfg = load_config()
     budget = float(cfg["monthly_budget"] or 0)
     anchor_month_start = start.replace(day=1).isoformat()
     month_spent = one(
         f"SELECT {_sum_expr('amount')} FROM transactions "
-        "WHERE type IN ('支出','退款') AND date >= ?", anchor_month_start)
+        "WHERE deleted_at = '' AND type IN ('支出','退款') AND date >= ?", anchor_month_start)
     month_income_total = one(
-        "SELECT SUM(amount) FROM transactions WHERE type='收入' AND date >= ?",
+        "SELECT SUM(amount) FROM transactions WHERE deleted_at = '' AND type='收入' AND date >= ?",
         anchor_month_start)
     days_in_month = (date(start.year + 1, 1, 1) - timedelta(days=1)).day if start.month == 12 \
         else (date(start.year, start.month + 1, 1) - timedelta(days=1)).day
     wins_row = conn.execute(
         "SELECT SUM(amount) AS t, COUNT(*) AS c FROM savings_wins "
-        "WHERE date BETWEEN ? AND ?", (s, e)).fetchone()
+        "WHERE deleted_at = '' AND date BETWEEN ? AND ?", (s, e)).fetchone()
     conn.close()
 
     savings_rate = None

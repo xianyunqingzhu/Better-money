@@ -13,3 +13,13 @@ dist/
 *.spec.tmp
 release/*.exe
 release/SHA256SUMS.txt
+release/android/*.apk
+release/android/SHA256SUMS.txt
+node_modules/
+mobile/dist/
+mobile/android/.gradle/
+mobile/android/build/
+mobile/android/app/build/
+mobile/android/capacitor-cordova-android-plugins/
+mobile/android/local.properties
+*.log

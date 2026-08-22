@@ -436,3 +436,18 @@ tbody tr:hover { background: #f7faf8; }
 .toast.show { opacity: 1; transform: none; }
 .toast-error { background: var(--danger); }
 .toast-success { background: var(--accent); }
+
+/* 数据与共享 */
+.share-box { max-width: 680px; }
+.share-preview { max-height: 56vh; overflow: auto; padding: 4px 2px; display: flex; flex-direction: column; gap: 12px; }
+.share-day { border: 1px solid var(--line); border-radius: var(--radius-md); padding: 10px 12px; background: var(--surface-subtle); }
+.share-day-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.share-day-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.share-mode.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.share-items { margin-top: 10px; display: flex; flex-direction: column; gap: 10px; }
+.share-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border: 1px dashed var(--line); border-radius: var(--radius-sm); }
+.share-item-rows { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.share-item-side { color: var(--ink-soft); font-size: 13px; }
+.share-item-choice { flex-shrink: 0; }
+.share-settings { padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-subtle); display: flex; flex-direction: column; gap: 6px; }
+.share-settings label { display: inline-flex; gap: 6px; align-items: center; margin-right: 14px; }

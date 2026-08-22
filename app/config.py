@@ -24,6 +24,9 @@ DEFAULTS = {
     "initial_balance_date": "",
     "onboarding_completed": False,
     "app_version": APP_VERSION,
+    # 共享同步：本机设备标识（首次启动自动生成）与显示名称
+    "device_id": "",
+    "device_name": "电脑",
 }
 
 

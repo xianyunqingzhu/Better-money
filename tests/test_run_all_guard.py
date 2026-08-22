@@ -66,7 +66,11 @@ def test_runner_rejects_repository_root_before_running_legacy_tests(
 def test_runner_rejects_non_temp_parent_repository_before_legacy_tests(
     tmp_path: Path,
 ) -> None:
-    result = _run_runner(tmp_path, str(REPOSITORY_ROOT.parents[1]))
+    # 需要一个不在系统临时目录内的“非仓库”父目录；仓库若位于盘符根一级
+    # （如 D:\Better-money），parents[1] 不存在，回退到盘符根。
+    parents = REPOSITORY_ROOT.parents
+    non_temp_parent = parents[1] if len(parents) > 1 else Path(REPOSITORY_ROOT.anchor)
+    result = _run_runner(tmp_path, str(non_temp_parent))
 
     assert result.returncode != 0
     assert "BETTER_MONEY_HOME must be inside the system temporary directory" in result.stderr

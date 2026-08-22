@@ -843,19 +843,28 @@ def _sum(conn: sqlite3.Connection, sql: str, parameters: tuple[Any, ...] = ()) -
     return float(row[0] or 0.0)
 
 
+def _live_tx_cond(conn: sqlite3.Connection) -> str:
+    """交易表的存活条件；旧库没有 deleted_at 列时不加过滤。"""
+    if _column_exists(conn, "transactions", "deleted_at"):
+        return "deleted_at = ''"
+    return "1 = 1"
+
+
 def _calculated_balance(conn: sqlite3.Connection, initial_balance: float) -> float:
     transaction_total = 0.0
     if _column_exists(conn, "transactions", "type") and _column_exists(
         conn, "transactions", "amount"
     ):
+        cond = _live_tx_cond(conn)
         transaction_total += _sum(
             conn,
-            "SELECT SUM(amount) FROM transactions WHERE type IN ('收入', '退款')",
+            f"SELECT SUM(amount) FROM transactions "
+            f"WHERE type IN ('收入', '退款') AND {cond}",
         )
         transaction_total -= _sum(
             conn,
-            "SELECT SUM(amount) FROM transactions "
-            "WHERE type IN ('支出', '取现', '转账', '还款')",
+            f"SELECT SUM(amount) FROM transactions "
+            f"WHERE type IN ('支出', '取现', '转账', '还款') AND {cond}",
         )
     adjustment_total = 0.0
     if _column_exists(conn, "adjustments", "diff"):
@@ -918,7 +927,9 @@ def _cleared_image_paths(
 def _validated_transaction_dates(conn: sqlite3.Connection) -> str | None:
     if not _column_exists(conn, "transactions", "date"):
         return None
-    dates = [row[0] for row in conn.execute("SELECT DISTINCT date FROM transactions")]
+    cond = _live_tx_cond(conn)
+    dates = [row[0] for row in conn.execute(
+        f"SELECT DISTINCT date FROM transactions WHERE {cond}")]
     for value in dates:
         if not isinstance(value, str) or not value:
             raise ValueError("legacy transaction date must use YYYY-MM-DD")

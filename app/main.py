@@ -19,6 +19,7 @@ from starlette.background import BackgroundTask
 
 from app import ai, backup, db, importers, ledger, recovery, summarizer, uploads
 from app import summaries as summary_service
+from app import sync
 from app.config import load_config, load_raw_config, save_config
 from app.data_api import router as data_router
 from app.goals import allocate_savings
@@ -34,6 +35,7 @@ async def lifespan(_: FastAPI):
     conn = db.get_conn()
     try:
         ledger.ensure_finance_config(conn, load_raw_config(), save_config)
+        sync.ensure_device_identity(conn, load_config())
     finally:
         conn.close()
     backup.ensure_daily_backup()
@@ -119,12 +121,14 @@ def _apply_auto_save(conn, income_item: dict) -> list[dict]:
 @app.post("/api/transactions")
 def add_transaction(tx: TxIn):
     conn = db.get_conn()
+    device_id = sync.local_device_id(conn)
     cur = conn.execute(
         "INSERT INTO transactions"
-        "(date, amount, type, category, merchant, note, source, created_at, updated_at)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "(date, amount, type, category, merchant, note, source, created_at, updated_at, "
+        "uuid, device_id)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (tx.date, tx.amount, tx.type, tx.category, tx.merchant, tx.note,
-         tx.source, db.now_str(), db.now_str()),
+         tx.source, db.now_str(), db.now_str(), sync.new_uuid(), device_id),
     )
     savings_allocations = []
     if tx.type == "收入":
@@ -144,7 +148,8 @@ def add_transaction(tx: TxIn):
 def list_transactions(limit: int = 300):
     conn = db.get_conn()
     rows = conn.execute(
-        "SELECT * FROM transactions ORDER BY date DESC, id DESC LIMIT ?", (limit,)
+        "SELECT * FROM transactions WHERE deleted_at = '' "
+        "ORDER BY date DESC, id DESC LIMIT ?", (limit,)
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
@@ -152,9 +157,22 @@ def list_transactions(limit: int = 300):
 
 @app.delete("/api/transactions/{tx_id}")
 def delete_transaction(tx_id: int):
+    """软删除：保留记录与 tombstone，等待下次共享传播后再物理清理。"""
     conn = db.get_conn()
-    row = conn.execute("SELECT date FROM transactions WHERE id = ?", (tx_id,)).fetchone()
-    conn.execute("DELETE FROM transactions WHERE id = ?", (tx_id,))
+    row = conn.execute(
+        "SELECT date, uuid FROM transactions WHERE id = ? AND deleted_at = ''",
+        (tx_id,)).fetchone()
+    if row:
+        now = db.now_str()
+        conn.execute(
+            "UPDATE transactions SET deleted_at = ?, updated_at = ? "
+            "WHERE id = ?",
+            (now, now, tx_id))
+        conn.execute(
+            "INSERT INTO sync_tombstones(uuid, kind, deleted_at, device_id, synced) "
+            "VALUES (?, 'transaction', ?, ?, 0) "
+            "ON CONFLICT(uuid) DO UPDATE SET deleted_at = excluded.deleted_at",
+            (row["uuid"], now, sync.local_device_id(conn)))
     conn.commit()
     conn.close()
     if row:
@@ -176,7 +194,9 @@ class TxPatch(BaseModel):
 def patch_transaction(tx_id: int, p: TxPatch):
     """编辑单笔交易（历史明细页用）。"""
     conn = db.get_conn()
-    row = conn.execute("SELECT date FROM transactions WHERE id = ?", (tx_id,)).fetchone()
+    row = conn.execute(
+        "SELECT date FROM transactions WHERE id = ? AND deleted_at = ''",
+        (tx_id,)).fetchone()
     if not row:
         conn.close()
         return JSONResponse(status_code=404, content={"error": "not_found", "message": "记录不存在"})
@@ -205,7 +225,9 @@ def patch_transaction(tx_id: int, p: TxPatch):
     if fields:
         fields.append("updated_at = ?")
         args.append(db.now_str())
-        conn.execute(f"UPDATE transactions SET {', '.join(fields)} WHERE id = ?", (*args, tx_id))
+        conn.execute(
+            f"UPDATE transactions SET {', '.join(fields)} "
+            f"WHERE id = ? AND deleted_at = ''", (*args, tx_id))
     conn.commit()
     conn.close()
     _mark_summaries_expired(p.date or row["date"])
@@ -238,7 +260,7 @@ def export_transactions_csv():
     conn = db.get_conn()
     rows = conn.execute(
         "SELECT date, amount, type, category, merchant, note, source, estimated "
-        "FROM transactions ORDER BY date, id").fetchall()
+        "FROM transactions WHERE deleted_at = '' ORDER BY date, id").fetchall()
     conn.close()
     import csv as _csv
     buf = io.StringIO()
@@ -444,10 +466,12 @@ def _store_pending(text: str, image_path: str = "") -> None:
 def _save_items(items: list[dict], source: str = "文字"):
     """入账前查重（日期+金额+商家一致视为可能重复，跳过）；含单品明细落库。"""
     conn = db.get_conn()
+    device_id = sync.local_device_id(conn)
     saved, skipped = [], []
     for it in items:
         dup = conn.execute(
-            "SELECT id FROM transactions WHERE date = ? AND amount = ? AND merchant = ?",
+            "SELECT id FROM transactions "
+            "WHERE date = ? AND amount = ? AND merchant = ? AND deleted_at = ''",
             (it["date"], it["amount"], it["merchant"]),
         ).fetchone()
         if dup:
@@ -455,10 +479,12 @@ def _save_items(items: list[dict], source: str = "文字"):
             continue
         cur = conn.execute(
             "INSERT INTO transactions"
-            "(date, amount, type, category, merchant, note, source, estimated, created_at, updated_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "(date, amount, type, category, merchant, note, source, estimated, created_at, updated_at, "
+            "uuid, device_id)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (it["date"], it["amount"], it["type"], it["category"], it["merchant"],
-             it["note"], source, it["estimated"], db.now_str(), db.now_str()),
+             it["note"], source, it["estimated"], db.now_str(), db.now_str(),
+             sync.new_uuid(), device_id),
         )
         row = dict(it)
         row["id"] = cur.lastrowid
@@ -470,9 +496,10 @@ def _save_items(items: list[dict], source: str = "文字"):
             row["savings_allocations"] = allocations
         for li in it.get("line_items") or []:
             conn.execute(
-                "INSERT INTO line_items(transaction_id, name, qty, price) VALUES (?, ?, ?, ?)",
+                "INSERT INTO line_items(transaction_id, name, qty, price, uuid, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
                 (row["id"], li.get("name", ""), float(li.get("qty") or 1),
-                 float(li.get("price") or 0)),
+                 float(li.get("price") or 0), sync.new_uuid(), db.now_str()),
             )
         saved.append(row)
     conn.commit()
@@ -509,17 +536,17 @@ def stats(month: str = ""):
     # 分类占比（支出 − 退款，按分类）
     cat_rows = rows(
         "SELECT category, SUM(CASE WHEN type='支出' THEN amount ELSE -amount END) AS total "
-        "FROM transactions WHERE type IN ('支出','退款') AND date BETWEEN ? AND ? "
+        "FROM transactions WHERE deleted_at = '' AND type IN ('支出','退款') AND date BETWEEN ? AND ? "
         "GROUP BY category HAVING total > 0 ORDER BY total DESC",
         start, end,
     )
     # 月收支
     month_expense = conn.execute(
         "SELECT SUM(CASE WHEN type='支出' THEN amount ELSE -amount END) FROM transactions "
-        "WHERE type IN ('支出','退款') AND date BETWEEN ? AND ?", (start, end)
+        "WHERE deleted_at = '' AND type IN ('支出','退款') AND date BETWEEN ? AND ?", (start, end)
     ).fetchone()[0] or 0
     month_income = conn.execute(
-        "SELECT SUM(amount) FROM transactions WHERE type='收入' AND date BETWEEN ? AND ?",
+        "SELECT SUM(amount) FROM transactions WHERE deleted_at = '' AND type='收入' AND date BETWEEN ? AND ?",
         (start, end),
     ).fetchone()[0] or 0
 
@@ -530,7 +557,7 @@ def stats(month: str = ""):
     trend_start = trend_end - timedelta(days=29)
     daily_rows = rows(
         "SELECT date, SUM(CASE WHEN type='支出' THEN amount ELSE -amount END) AS total "
-        "FROM transactions WHERE type IN ('支出','退款') AND date BETWEEN ? AND ? "
+        "FROM transactions WHERE deleted_at = '' AND type IN ('支出','退款') AND date BETWEEN ? AND ? "
         "GROUP BY date",
         trend_start.isoformat(), trend_end.isoformat(),
     )
@@ -546,7 +573,7 @@ def stats(month: str = ""):
     eight_weeks_ago = this_monday - timedelta(days=7 * 7)
     week_rows = rows(
         "SELECT date, SUM(CASE WHEN type='支出' THEN amount ELSE -amount END) AS total "
-        "FROM transactions WHERE type IN ('支出','退款') AND date >= ? GROUP BY date",
+        "FROM transactions WHERE deleted_at = '' AND type IN ('支出','退款') AND date >= ? GROUP BY date",
         eight_weeks_ago.isoformat(),
     )
     by_date = {r["date"]: r["total"] for r in week_rows}
@@ -583,7 +610,8 @@ def months():
     """有记录的月份列表（月份切换器用）。"""
     conn = db.get_conn()
     rows = conn.execute(
-        "SELECT DISTINCT substr(date, 1, 7) AS m FROM transactions ORDER BY m DESC"
+        "SELECT DISTINCT substr(date, 1, 7) AS m FROM transactions "
+        "WHERE deleted_at = '' ORDER BY m DESC"
     ).fetchall()
     conn.close()
     return [r["m"] for r in rows]
@@ -593,7 +621,9 @@ def months():
 def list_goals():
     """目标列表（按优先级排序）。"""
     conn = db.get_conn()
-    rows = conn.execute("SELECT * FROM goals ORDER BY priority, id").fetchall()
+    rows = conn.execute(
+        "SELECT * FROM goals WHERE deleted_at = '' ORDER BY priority, id"
+    ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
@@ -614,11 +644,16 @@ def add_goal(g: GoalIn):
     cd = int(cfg.get("cooldown_days") or 7)
     until = (date.today() + timedelta(days=cd)).isoformat()
     conn = db.get_conn()
-    maxp = conn.execute("SELECT COALESCE(MAX(priority), -1) + 1 FROM goals").fetchone()[0]
+    maxp = conn.execute(
+        "SELECT COALESCE(MAX(priority), -1) + 1 FROM goals WHERE deleted_at = ''"
+    ).fetchone()[0]
+    now = db.now_str()
     cur = conn.execute(
-        "INSERT INTO goals(name, price, saved, priority, status, cooldown_until, expected_date, note, created_at) "
-        "VALUES (?, ?, 0, ?, '冷静期', ?, ?, ?, ?)",
-        (g.name.strip(), g.price, maxp, until, g.expected_date, g.note, db.now_str()))
+        "INSERT INTO goals(name, price, saved, priority, status, cooldown_until, expected_date, note, created_at, "
+        "uuid, device_id, updated_at) "
+        "VALUES (?, ?, 0, ?, '冷静期', ?, ?, ?, ?, ?, ?, ?)",
+        (g.name.strip(), g.price, maxp, until, g.expected_date, g.note, now,
+         sync.new_uuid(), sync.local_device_id(conn), now))
     conn.commit()
     gid = cur.lastrowid
     conn.close()
@@ -629,7 +664,9 @@ def add_goal(g: GoalIn):
 def patch_goal(gid: int, patch: dict):
     """编辑目标字段（含已存金额——手动调拨入口）。"""
     conn = db.get_conn()
-    if not conn.execute("SELECT id FROM goals WHERE id = ?", (gid,)).fetchone():
+    if not conn.execute(
+        "SELECT id FROM goals WHERE id = ? AND deleted_at = ''", (gid,)
+    ).fetchone():
         conn.close()
         return JSONResponse(status_code=404, content={"error": "not_found", "message": "目标不存在"})
     fields, args = [], []
@@ -638,6 +675,8 @@ def patch_goal(gid: int, patch: dict):
             fields.append(f"{k} = ?")
             args.append(patch[k])
     if fields:
+        fields.append("updated_at = ?")
+        args.append(db.now_str())
         conn.execute(f"UPDATE goals SET {', '.join(fields)} WHERE id = ?", (*args, gid))
     conn.commit()
     conn.close()
@@ -646,9 +685,11 @@ def patch_goal(gid: int, patch: dict):
 
 @app.delete("/api/goals/{gid}")
 def delete_goal(gid: int):
+    """软删除目标并登记 tombstone，等待共享传播。"""
     conn = db.get_conn()
     goal = conn.execute(
-        "SELECT name, saved FROM goals WHERE id = ?", (gid,)
+        "SELECT name, saved, uuid FROM goals WHERE id = ? AND deleted_at = ''",
+        (gid,),
     ).fetchone()
     if not goal:
         conn.close()
@@ -656,7 +697,15 @@ def delete_goal(gid: int):
             status_code=404,
             content={"error": "not_found", "message": "目标不存在"},
         )
-    conn.execute("DELETE FROM goals WHERE id = ?", (gid,))
+    now = db.now_str()
+    conn.execute(
+        "UPDATE goals SET deleted_at = ?, updated_at = ? WHERE id = ?",
+        (now, now, gid))
+    conn.execute(
+        "INSERT INTO sync_tombstones(uuid, kind, deleted_at, device_id, synced) "
+        "VALUES (?, 'goal', ?, ?, 0) "
+        "ON CONFLICT(uuid) DO UPDATE SET deleted_at = excluded.deleted_at",
+        (goal["uuid"], now, sync.local_device_id(conn)))
     conn.commit()
     conn.close()
     return {"ok": True, "name": goal["name"], "saved": float(goal["saved"] or 0)}
@@ -669,44 +718,54 @@ class GoalAction(BaseModel):
 @app.post("/api/goals/{gid}/action")
 def goal_action(gid: int, req: GoalAction):
     conn = db.get_conn()
-    g = conn.execute("SELECT * FROM goals WHERE id = ?", (gid,)).fetchone()
+    g = conn.execute(
+        "SELECT * FROM goals WHERE id = ? AND deleted_at = ''", (gid,)
+    ).fetchone()
     if not g:
         conn.close()
         return JSONResponse(status_code=404, content={"error": "not_found", "message": "目标不存在"})
     act = req.action
     today = date.today().isoformat()
     now = db.now_str()
+    device_id = sync.local_device_id(conn)
 
     if act == "pause":
-        conn.execute("UPDATE goals SET status = '已暂停' WHERE id = ?", (gid,))
+        conn.execute("UPDATE goals SET status = '已暂停', updated_at = ? WHERE id = ?", (now, gid))
     elif act == "resume":
-        conn.execute("UPDATE goals SET status = '进行中' WHERE id = ?", (gid,))
+        conn.execute("UPDATE goals SET status = '进行中', updated_at = ? WHERE id = ?", (now, gid))
     elif act == "abandon":
-        conn.execute("UPDATE goals SET status = '已放弃', saved = 0 WHERE id = ?", (gid,))
+        conn.execute("UPDATE goals SET status = '已放弃', saved = 0, updated_at = ? WHERE id = ?", (now, gid))
     elif act == "want":  # 冷静期结束，还想要
-        conn.execute("UPDATE goals SET status = '进行中' WHERE id = ?", (gid,))
+        conn.execute("UPDATE goals SET status = '进行中', updated_at = ? WHERE id = ?", (now, gid))
     elif act == "pass":  # 冷静期结束，不想要 → 记入「省下的钱」
-        conn.execute("UPDATE goals SET status = '已放弃', saved = 0 WHERE id = ?", (gid,))
+        conn.execute("UPDATE goals SET status = '已放弃', saved = 0, updated_at = ? WHERE id = ?", (now, gid))
         conn.execute(
-            "INSERT INTO savings_wins(goal_name, amount, date, created_at) VALUES (?, ?, ?, ?)",
-            (g["name"], g["price"], today, now))
+            "INSERT INTO savings_wins(goal_name, amount, date, created_at, uuid, device_id, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (g["name"], g["price"], today, now, sync.new_uuid(), device_id, now))
     elif act == "achieve_buy":  # 已确认 ②A：记一笔支出 + 标记已达成
-        conn.execute("UPDATE goals SET status = '已达成', achieved_at = ? WHERE id = ?", (now, gid))
+        conn.execute("UPDATE goals SET status = '已达成', achieved_at = ?, updated_at = ? WHERE id = ?", (now, now, gid))
         conn.execute(
-            "INSERT INTO transactions(date, amount, type, category, merchant, note, source, estimated, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (today, g["price"], "支出", "购物", g["name"], "达成目标购买", "目标", 0, now, now))
+            "INSERT INTO transactions(date, amount, type, category, merchant, note, source, estimated, created_at, updated_at, "
+            "uuid, device_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (today, g["price"], "支出", "购物", g["name"], "达成目标购买", "目标", 0, now, now,
+             sync.new_uuid(), device_id))
     elif act == "achieve_freeze":  # 钱够了先不买 → 冻结（暂停）
-        conn.execute("UPDATE goals SET status = '已暂停' WHERE id = ?", (gid,))
+        conn.execute("UPDATE goals SET status = '已暂停', updated_at = ? WHERE id = ?", (now, gid))
     elif act in ("up", "down"):
-        ordered = conn.execute("SELECT id FROM goals ORDER BY priority, id").fetchall()
+        ordered = conn.execute(
+            "SELECT id FROM goals WHERE deleted_at = '' ORDER BY priority, id"
+        ).fetchall()
         ids = [r["id"] for r in ordered]
         i = ids.index(gid)
         j = i - 1 if act == "up" else i + 1
         if 0 <= j < len(ids):
             ids[i], ids[j] = ids[j], ids[i]
         for k, gid2 in enumerate(ids):
-            conn.execute("UPDATE goals SET priority = ? WHERE id = ?", (k, gid2))
+            conn.execute(
+                "UPDATE goals SET priority = ?, updated_at = ? WHERE id = ?",
+                (k, now, gid2))
     else:
         conn.close()
         return JSONResponse(status_code=400, content={
@@ -728,8 +787,12 @@ class TransferIn(BaseModel):
 def goal_transfer(gid: int, req: TransferIn):
     """目标间调拨已存金额。"""
     conn = db.get_conn()
-    frm = conn.execute("SELECT id, saved FROM goals WHERE id = ?", (gid,)).fetchone()
-    to = conn.execute("SELECT id FROM goals WHERE id = ?", (req.to_id,)).fetchone()
+    frm = conn.execute(
+        "SELECT id, saved FROM goals WHERE id = ? AND deleted_at = ''",
+        (gid,)).fetchone()
+    to = conn.execute(
+        "SELECT id FROM goals WHERE id = ? AND deleted_at = ''",
+        (req.to_id,)).fetchone()
     if not frm or not to:
         conn.close()
         return JSONResponse(status_code=404, content={"error": "not_found", "message": "目标不存在"})
@@ -737,8 +800,13 @@ def goal_transfer(gid: int, req: TransferIn):
         conn.close()
         return JSONResponse(status_code=400, content={
             "error": "not_enough", "message": "该目标已存金额不足"})
-    conn.execute("UPDATE goals SET saved = saved - ? WHERE id = ?", (req.amount, gid))
-    conn.execute("UPDATE goals SET saved = saved + ? WHERE id = ?", (req.amount, req.to_id))
+    now = db.now_str()
+    conn.execute(
+        "UPDATE goals SET saved = saved - ?, updated_at = ? WHERE id = ?",
+        (req.amount, now, gid))
+    conn.execute(
+        "UPDATE goals SET saved = saved + ?, updated_at = ? WHERE id = ?",
+        (req.amount, now, req.to_id))
     conn.commit()
     conn.close()
     return {"ok": True}
@@ -750,7 +818,8 @@ def savings_wins(month: str = ""):
     m = month or date.today().strftime("%Y-%m")
     conn = db.get_conn()
     rows = conn.execute(
-        "SELECT * FROM savings_wins WHERE date LIKE ? ORDER BY date DESC, id DESC",
+        "SELECT * FROM savings_wins WHERE deleted_at = '' AND date LIKE ? "
+        "ORDER BY date DESC, id DESC",
         (m + "%",)).fetchall()
     conn.close()
     total = round(sum(r["amount"] for r in rows), 2)
@@ -925,11 +994,11 @@ def summary():
         return float(row[0] or 0)
 
     month_expense = (
-        one("SELECT SUM(amount) FROM transactions WHERE type = '支出' AND date >= ?", month_start)
-        - one("SELECT SUM(amount) FROM transactions WHERE type = '退款' AND date >= ?", month_start)
+        one("SELECT SUM(amount) FROM transactions WHERE deleted_at = '' AND type = '支出' AND date >= ?", month_start)
+        - one("SELECT SUM(amount) FROM transactions WHERE deleted_at = '' AND type = '退款' AND date >= ?", month_start)
     )
     month_income = one(
-        "SELECT SUM(amount) FROM transactions WHERE type = '收入' AND date >= ?", month_start
+        "SELECT SUM(amount) FROM transactions WHERE deleted_at = '' AND type = '收入' AND date >= ?", month_start
     )
     balance = snap.closing_balance
     conn.close()
@@ -1027,6 +1096,62 @@ def set_initial_balance(req: InitialBalanceIn):
         conn, new_balance, date.fromisoformat(new_date))
     conn.close()
     return {"ok": True, "balance": round(balance, 2)}
+
+
+# ---------- 数据与共享（手机端交换账本） ----------
+
+@app.get("/api/share/status")
+def share_status():
+    return sync.sync_status()
+
+
+@app.get("/api/share/export")
+def share_export():
+    try:
+        info = sync.export_share_package()
+    except sync.ShareError as e:
+        return JSONResponse(status_code=400, content={
+            "error": "export_failed", "message": str(e)})
+    return FileResponse(
+        info["path"], media_type="application/zip", filename=info["filename"])
+
+
+class ShareApplyIn(BaseModel):
+    token: str
+    decisions: dict = {}
+
+
+@app.post("/api/share/preview")
+async def share_preview(file: UploadFile = File(...)):
+    """上传共享包 → 校验并计算差异（不写数据库）。"""
+    data = await file.read()
+    try:
+        token = sync.stage_import_package(data)
+        return sync.preview_import(token)
+    except sync.ShareError as e:
+        return JSONResponse(status_code=400, content={
+            "error": "bad_package", "message": str(e)})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={
+            "error": "preview_failed", "message": str(e)})
+
+
+@app.post("/api/share/apply")
+def share_apply(req: ShareApplyIn):
+    """按用户决策事务性合并共享包；失败整次回滚。"""
+    try:
+        result = sync.apply_import(req.token, req.decisions)
+    except sync.ShareError as e:
+        return JSONResponse(status_code=400, content={
+            "error": "conflict", "message": str(e)})
+    finally:
+        sync.discard_import(req.token)
+    return result
+
+
+@app.get("/api/share/events")
+def share_events():
+    return sync.list_sync_events()
 
 
 # ---------- 前端 ----------

@@ -190,6 +190,19 @@
         <input type="file" id="b-restore-file" accept=".zip" class="hidden">
       </div>
       <div class="reconcile-box">
+        <h3>数据与共享（与手机端交换账本）</h3>
+        <p class="muted" id="share-status">加载中…</p>
+        <div class="form-row" style="max-width: 240px"><label>本机设备名称</label><input type="text" id="s-device-name" placeholder="电脑"></div>
+        <div class="btn-row" style="max-width: 680px">
+          <a id="share-export" class="ghost link" href="/api/share/export">导出共享包（发到手机）</a>
+          <button id="share-import-btn" class="ghost">导入共享包（来自手机）</button>
+          <input type="file" id="share-import-file" accept=".zip" class="hidden">
+        </div>
+        <p class="muted">共享包只含交易、目标、省下的钱与公开账本设置；不含 API Key、总结正文和图片原件。重复导入同一个包不会产生重复记录。</p>
+        <h3 style="margin-top: 14px">最近同步记录</h3>
+        <div id="share-events" class="adjustment-list"></div>
+      </div>
+      <div class="reconcile-box">
         <h3>退出服务</h3>
         <p class="muted">关闭浏览器不会停止服务；点这里才会真正停止（下次双击启动脚本重新打开）。</p>
         <button id="s-shutdown" class="ghost">退出服务</button>
@@ -208,6 +221,20 @@
       <p class="todo-note">Key 只保存在本地 data/config.json，不会上传到任何别的地方。</p>
     </section>
   </main>
+
+  <!-- 共享包导入预览与冲突处理 -->
+  <div id="share-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="share-modal-title">
+    <div class="modal-box share-box">
+      <div class="modal-head">
+        <h2 id="share-modal-title">导入共享包</h2>
+      </div>
+      <div id="share-preview" class="share-preview"></div>
+      <div class="btn-row">
+        <button id="share-cancel" class="ghost">取消</button>
+        <button id="share-apply" class="primary">确认导入</button>
+      </div>
+    </div>
+  </div>
 
   <!-- 首次引导：起点 → 初始余额 → 预算 → AI（可跳过），完成前不可关闭 -->
   <div id="onboarding-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">

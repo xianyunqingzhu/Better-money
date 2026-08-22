@@ -116,7 +116,11 @@ def test_allocate_savings_does_not_commit_the_callers_transaction(conn):
 
 def test_create_income_returns_allocations_without_second_ledger_deduction(client):
     cfg = load_config()
-    cfg.update({"initial_balance": 100.0, "auto_save_ratio": 0.333})
+    cfg.update({
+        "initial_balance": 100.0,
+        "initial_balance_date": "2026-08-01",  # 固定起始日，避免“今天”越过交易日期
+        "auto_save_ratio": 0.333,
+    })
     save_config(cfg)
 
     conn = db.get_conn()
@@ -202,10 +206,18 @@ def test_delete_goal_returns_deleted_values_and_preserves_transactions(client):
     assert conn.execute(
         "SELECT id FROM transactions WHERE id = ?", (transaction_id,)
     ).fetchone()[0] == transaction_id
-    assert conn.execute(
-        "SELECT id FROM goals WHERE id = ?", (goal_id,)
-    ).fetchone() is None
+    # 软删除：记录保留并带删除标记，列表与统计不再可见
+    row = conn.execute(
+        "SELECT deleted_at FROM goals WHERE id = ?", (goal_id,)
+    ).fetchone()
+    assert row is not None and row["deleted_at"]
+    tombstone = conn.execute(
+        "SELECT kind FROM sync_tombstones WHERE uuid = "
+        "(SELECT uuid FROM goals WHERE id = ?)", (goal_id,)
+    ).fetchone()
+    assert tombstone is not None and tombstone["kind"] == "goal"
     conn.close()
+    assert not client.get("/api/goals").json()
 
 
 def test_delete_missing_goal_returns_exact_not_found_contract(client):

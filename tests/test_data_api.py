@@ -994,13 +994,17 @@ def test_lifespan_initializes_database_before_daily_backup(monkeypatch):
         lambda conn, raw, save: events.append("finance"),
     )
     monkeypatch.setattr(
+        main.sync, "ensure_device_identity",
+        lambda conn, cfg: events.append("identity"),
+    )
+    monkeypatch.setattr(
         main.backup, "ensure_daily_backup", lambda: events.append("backup")
     )
 
     with TestClient(main.app):
         pass
 
-    assert events == ["recovery", "init", "finance", "backup"]
+    assert events == ["recovery", "init", "finance", "identity", "backup"]
 
 
 def test_lifespan_skips_daily_backup_when_database_initialization_fails(monkeypatch):
