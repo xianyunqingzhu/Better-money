@@ -1,4 +1,4 @@
-﻿"""Launcher: port selection, instance probing, single-instance open."""
+"""Launcher: port selection, instance probing, single-instance open."""
 import json
 import socket
 from pathlib import Path
@@ -19,10 +19,12 @@ def _free_port() -> int:
 
 
 def _valid_health():
+    from app.version import APP_VERSION
+
     return {
         "ok": True,
         "app_id": "better-money",
-        "version": "1.0.0",
+        "version": APP_VERSION,
         "protocol": 1,
         "ai_configured": False,
     }

@@ -1,4 +1,4 @@
-﻿# 已安装应用冒烟：验证单实例、健康身份与受控退出
+# 已安装应用冒烟：验证单实例、健康身份与受控退出
 # 用法：powershell -ExecutionPolicy Bypass -File tests\smoke_installed.ps1 `
 #         -ExecutablePath "C:\Program Files\Better Money\BetterMoney.exe" `
 #         -ApplicationHome "$env:LOCALAPPDATA\BetterMoney"
@@ -25,7 +25,7 @@ function Wait-Record {
 function Invoke-Health {
     param([int]$Port)
     $resp = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/api/health" -TimeoutSec 2
-    if (-not $resp.ok -or $resp.app_id -ne "better-money" -or $resp.version -ne "1.0.0" -or $resp.protocol -ne 1) {
+    if (-not $resp.ok -or $resp.app_id -ne "better-money" -or $resp.version -ne "1.1.0" -or $resp.protocol -ne 1) {
         throw "健康身份校验失败：$($resp | ConvertTo-Json -Compress)"
     }
     return $resp

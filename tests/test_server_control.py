@@ -78,5 +78,5 @@ def test_shutdown_unavailable_without_control_token(client):
 
 def test_version_module_has_stable_identity():
     assert APP_ID == "better-money"
-    assert APP_VERSION == "1.0.0"
+    assert APP_VERSION == "1.1.0"
     assert HEALTH_PROTOCOL == 1

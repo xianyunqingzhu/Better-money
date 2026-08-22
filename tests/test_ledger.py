@@ -122,7 +122,9 @@ def test_ensure_finance_config_infers_dates_for_legacy_data(conn, monkeypatch, t
     result = ensure_finance_config(conn, cfg, save)
     assert result["initial_balance_date"] == "2026-07-05"
     assert result["onboarding_completed"] is True
-    assert result["app_version"] == "1.0.0"
+    from app.version import APP_VERSION
+
+    assert result["app_version"] == APP_VERSION
     assert save.calls and save.calls[-1]["initial_balance_date"] == "2026-07-05"
 
 
