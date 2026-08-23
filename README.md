@@ -1,77 +1,94 @@
-# 🐷 Better-money · 个人智能记账与储蓄助手
+# 🐷 Better-money · 会记账、会攒钱、还会写总结的本地账本
+
+<p align="center">
+  <img src="docs/logo.png" width="96" alt="Better-money">
+</p>
 
 <p align="center">
   <img alt="Python" src="https://img.shields.io/badge/Python-3.13+-3776AB?style=flat-square&logo=python&logoColor=white">
   <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-0.110+-009688?style=flat-square&logo=fastapi&logoColor=white">
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-Capacitor-3178C6?style=flat-square&logo=typescript&logoColor=white">
   <img alt="SQLite" src="https://img.shields.io/badge/SQLite-003B57?style=flat-square&logo=sqlite&logoColor=white">
   <img alt="ECharts" src="https://img.shields.io/badge/ECharts-5.5-AA344D?style=flat-square">
   <img alt="AI" src="https://img.shields.io/badge/AI-OpenAI%2FDeepSeek%2FQwen%E5%8F%AF%E5%88%87%E6%8D%A2-412991?style=flat-square">
-  <img alt="Platform" src="https://img.shields.io/badge/Windows%2FmacOS-%E6%9C%AC%E5%9C%B0%E8%BF%90%E8%A1%8C-0078D6?style=flat-square&logo=windows&logoColor=white">
+  <img alt="Windows" src="https://img.shields.io/badge/Windows-10%2F11-0078D6?style=flat-square&logo=windows&logoColor=white">
+  <img alt="macOS" src="https://img.shields.io/badge/macOS-000000?style=flat-square&logo=apple&logoColor=white">
   <img alt="Android" src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?style=flat-square&logo=android&logoColor=white">
-  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-Capacitor-3178C6?style=flat-square&logo=typescript&logoColor=white">
-  <img alt="Progress" src="https://img.shields.io/badge/M1--M7-%E5%85%A8%E9%83%A8%E5%AE%8C%E6%88%90-success?style=flat-square">
-  <img alt="Last Commit" src="https://img.shields.io/github/last-commit/xianyunqingzhu/Better-money?style=flat-square">
+  <img alt="License" src="https://img.shields.io/badge/License-MIT-4caf50?style=flat-square">
   <img alt="Stars" src="https://img.shields.io/github/stars/xianyunqingzhu/Better-money?style=flat-square">
 </p>
 
-为"想攒钱但攒不住钱"的学生设计的本地记账工具：每晚花几分钟记账，
-随时知道还剩多少钱、目标攒到哪了，每周/每月收到一篇像朋友写的小作文总结。
+<p align="center"><b>为「想攒钱但攒不住钱」的你设计：每晚花一分钟记几笔，随时知道还剩多少钱、目标攒到哪了，每周还能收到一篇像朋友写的总结小作文。</b></p>
 
-完整设计见 `设计文档.md`，**详细使用教程见 `使用说明.md`**。
+<p align="center">数据 100% 留在本地 · 没有账号 · 没有云端 · 没有广告</p>
 
-## 📦 下载与安装（Windows）
+---
 
-安装包不放在代码仓库里，请到 **[Releases 页面](https://github.com/xianyunqingzhu/Better-money/releases)** 下载：
+## ✨ 为什么选 Better-money
 
-1. 下载最新版 `BetterMoney-Setup-<版本>.exe`（同页 `SHA256SUMS.txt` 可校验）
-2. 双击安装（默认 `Program Files\Better Money`，可改路径；需要一次管理员授权）
-3. 装完从桌面/开始菜单打开 Better-money——无需安装 Python，首次打开即四步引导
-4. 个人数据保存在 `%LOCALAPPDATA%\BetterMoney`，升级/卸载默认不丢数据
+| 💡 优点 | 说明 |
+|---|---|
+| 🤖 **一句话记多笔** | 输入「午饭食堂 15、奶茶 12、聚餐 200 4人AA、昨天兼职 300」——自动拆成多笔、自动算 AA 分摊、自动补记日期，还能识别收入和退款 |
+| 📷 **小票拍照即记** | 拍购物小票或支付截图，自动识别商品、金额、商家；识别结果逐条确认后才入账，不怕 AI 看走眼 |
+| 🐷 **专门治「冲动消费」** | 想买的东西先进「目标清单」冷静 7 天；每笔收入自动存一部分到目标；「先不买」还会把省下的钱记进荣誉榜 |
+| 📊 **钱花哪了一目了然** | 分类占比、近 30 天趋势、近 8 周对比、目标进度，全部本地图表，切月查看历史 |
+| ✍️ **会写总结的账本** | 每周/每月自动生成一篇总结小作文——语气可选：朋友、毒舌、温柔、老师 |
+| 📱 **电脑 + 手机双端** | 电脑端功能最全；手机端随身记；两端通过一个 ZIP 文件交换账本，微信传一下就行 |
+| 🔒 **数据完全归你** | 无服务器、无账号、无实时同步；API Key 只存在你自己的设备上，共享文件里永远没有它 |
+| 💾 **备份做得较真** | 每次启动自动备份；完整备份 ZIP 带校验、可恢复；升级自动迁移，绝不悄悄丢数据 |
+| 🆓 **不要钱** | 免费开源；AI 功能自备 API Key（OpenAI / DeepSeek / Qwen 都支持），用多少花多少 |
 
-> 首次运行若出现 SmartScreen「Windows 已保护你的电脑」，点「更多信息 → 仍要运行」。
-> 每次推送 `v*` 标签（如 `v1.0.0`）会自动构建并挂载新安装包到 Release。
+## 📱 双端覆盖
 
-## 📱 手机端（Android）
+| | 💻 电脑端（Windows / macOS） | 📱 手机端（Android 8.0+） |
+|---|---|---|
+| 记账 | 智能文字解析、手动、CSV/Excel 账单导入 | 智能文字解析、手动 |
+| 识图 | 上传小票/截图 | 拍照 / 相册多选 |
+| 看板 | 完整图表看板 | 两页横滑：五项数据 + 图表 |
+| 目标 | 完整目标清单 | 完整目标清单（含冷静期/自动存） |
+| 总结 | 周/月总结（可配图） | 周/月总结 |
+| 历史 | 明细表格 | 卡片列表 + 筛选 |
+| 对账 | 对账校准 + 撤销 | 同左 |
+| 数据 | 本地 SQLite + 备份 | 本地 SQLite + 备份 |
+| 交换 | **共享包导出/导入** | **共享包导出/导入** |
 
-Better-money 现在也有**独立运行的 Android 应用**（v1.1.0 起），数据不依赖电脑、不需要云端：
+## 🔄 两端怎么交换数据
 
-- 下载：**[Releases 页面](https://github.com/xianyunqingzhu/Better-money/releases)** 里的 `better-money-app-<版本>.apk`（Android 8.0+；覆盖安装数据保留）
-- 功能：智能文字记账、拍照/相册识别小票、目标清单、周/月总结、图表分析、历史筛选、完整备份——与电脑端规则一致
-- **与电脑交换账本**：两端「设置 → 数据与共享」导出/导入共享 ZIP（微信/USB/网盘传递即可）；同一天两边都改过才冲突，可逐条处理
-- 共享包不含 API Key / 总结 / 图片原件；API Key 只保存在手机本地
-- 源码与构建说明见 `mobile/README.md`，共享包格式见 `docs/共享同步包格式.md`
+不需要云端、不需要两台设备同时在线——手动传一个 ZIP 就行：
 
-## 快速开始
-
-### Windows
-
-1. 双击 `启动.bat`
-   - 首次运行会自动创建虚拟环境并安装依赖（需要联网）
-2. 浏览器自动打开 http://127.0.0.1:8642
-3. 首次使用会弹出**四步引导**：起点（全新开始 / 迁移旧数据 / 从备份恢复）→ 初始余额 → 月预算与自动存比例 → AI 配置（可跳过）
-4. 开始记账。关闭命令行窗口即停止服务。
-
-### macOS
-
-1. 双击 `启动.command`（首次运行自动创建虚拟环境并安装依赖，需要联网与 Python 3.10+）
-2. 浏览器自动打开 http://127.0.0.1:8642，关闭终端窗口即停止服务
-3. 或双击 `Better-money.app`（无窗口后台运行，停止用 `停止服务.command`；可右键"制作替身"把替身拖入 Dock）
-4. 若提示"无法打开，因为来自身份不明的开发者"：右键文件 → 打开；或终端运行 `xattr -dr com.apple.quarantine 项目文件夹路径`
-
-手动启动（可选）：
-
-```bat
-.venv\Scripts\activate
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8642
+```
+电脑端 ──导出──▶ better-money-share-*.zip ──微信/USB/网盘──▶ 手机端
+   ▲                                                          │
+   └─────────────── 手机再导出，电脑导入（可来回） ◀─────────────┘
 ```
 
-### 数据放在哪里
+- 导入前先**预览**：来自哪台设备、新增/修改/删除多少笔，确认后才写入
+- 同一天两边都改过才弹冲突面板：保留本机 / 使用包内 / 合并逐条处理
+- 删除会同步传播，已删除的不会「复活」；重复导入同一包不会重复
+- 共享包**不含** API Key、总结正文和图片原件；失败自动回滚
 
-- **源码运行**：未设置额外环境变量时，默认使用项目里的 `data/`。
-- **未来 Windows 安装版**：打包后的应用将把 `%LOCALAPPDATA%\BetterMoney` 作为应用数据根目录；这是安装版目标，目前不要把它当成已经发布的安装包。
-- **开发测试**：必须把 `BETTER_MONEY_HOME` 指到 `%TEMP%` 下的一次性目录，测试数据写入该目录的 `data/`，不要指向项目根目录。
+## 🚀 快速开始
 
-## 里程碑进度
+### 电脑端
+
+**最简单的方式**：到 [Releases](https://github.com/xianyunqingzhu/Better-money/releases) 下载 `BetterMoney-Setup-<版本>.exe` 双击安装，桌面图标打开即用（内置 Python，无需安装环境）。
+
+**源码运行**（开发者）：
+- Windows：双击 `启动.bat` → 浏览器自动打开 `http://127.0.0.1:8642`
+- macOS：双击 `启动.command`；或双击 `Better-money.app` 后台运行
+
+首次使用有四步引导：全新开始 / 迁移旧数据 / 从备份恢复 → 初始余额 → 月预算与自动存比例 → AI 配置（可跳过）。
+
+### 手机端
+
+1. 到 [Releases](https://github.com/xianyunqingzhu/Better-money/releases) 下载 `better-money-app-<版本>.apk`
+2. 传到手机，允许「安装未知来源应用」后安装（覆盖升级数据保留）
+3. 想把电脑账本搬过来：电脑「设置 → 数据与共享」导出共享包 → 手机「设置 → 数据与共享」导入
+4. 手机「设置 → AI」填自己的 API Key（Key 属于哪家服务商，Base 和模型就填哪家）
+
+> 📖 详细教程：**[使用说明.md](使用说明.md)** ｜ 手机端构建说明：**[mobile/README.md](mobile/README.md)** ｜ 共享包格式：[docs/共享同步包格式.md](docs/共享同步包格式.md)
+
+## 🧭 开发里程碑
 
 | 阶段 | 内容 | 状态 |
 |---|---|---|
@@ -82,46 +99,40 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8642
 | M5 | 周/月总结小作文（非模板化） | ✅ 已完成 |
 | M6 | 攒钱增强：预算预警/冷静期/储蓄率/目标清单/对账 | ✅ 已完成 |
 | M7 | 打磨：自动备份/数据导出/历史明细/使用说明 | ✅ 已完成 |
+| M8 | **手机端 Android 应用 + 两端共享同步（schema v3）** | ✅ 已完成 |
 
-## 功能一览
+## 🏗 技术栈
 
-- **记账**：文字批量（多笔、AA 分摊、补记、收入识别、估算标记）· 手动表单 · 截图/小票识别（确认面板可改可删，PNG/JPG/WebP 校验）· 微信/支付宝账单 CSV/Excel 导入（自动去重、大小与类型限制）
-- **看板**：余额 / 本月收支 / 今日可花额度 / 分类占比饼图 / 30 天趋势 / 近 8 周对比 / **多目标进度列表**（已存 / 需要 / 还差）/ 月份切换 / 预算预警（80% 黄、100% 红）
-- **目标**：愿望清单多目标、优先级排序、冷静期（放弃记入"省下的钱"）、收入自动存按优先级跨目标分配、达成自动记支出、金额调拨、一键删除
-- **总结**：点「生成总结」选区间（本周 / 上周 / 本月 / 上月 / 自定义任意区间），周/月类型自由组合；同区间可覆盖重写；总结可删除（不影响账目）；账目修改后自动标过期
-- **账本**：起始日初始余额（只设置一次，每月自动滚动）、对账校准与**调整撤销**、已规划金额与可支配余额拆分
-- **设置**：AI 服务商预设（OpenAI / DeepSeek / Qwen / 自定义）+ 一键测试连接、初始余额受保护更正（自动安全备份）、立即备份 / 恢复备份 / 导出完整备份 ZIP / 打开数据文件夹
-- **保障**：启动自动备份（保留 30 份）、校验过的 ZIP 完整备份与恢复、旧数据迁移向导、AI 挂了红横幅提示 + 手动兜底、解析失败进待处理队列
+```
+├── 电脑端  Python 3.13 · FastAPI · SQLite · ECharts（本地 Web 应用，单机 127.0.0.1）
+├── 手机端  TypeScript · Capacitor(WebView) · sql.js · ECharts（纯本地，无后端服务）
+└── 测试    电脑端 380+ pytest（含 E2E 六脚本）；手机端 vitest 行为基线；两端共享包互通验证
+```
 
-## 目录结构
+## 🔒 数据与隐私
+
+- 所有账目、图片、配置、备份**只存在你自己的设备**；服务只监听 `127.0.0.1`，请勿把端口开放到公网
+- API Key 只保存在本机配置文件，**不会**进入共享包、完整备份或日志
+- 共享包不含 API Key、总结正文与图片原件；完整备份 ZIP 同样剔除 API Key 并带清单校验
+- 记账文字/图片会发送给你配置的大模型服务用于解析（用哪家由你决定），请知悉
+
+## 📂 目录结构
 
 ```
 Better-money/
-├── app/                # 后端
-│   ├── main.py         # FastAPI 入口与全部 API
-│   ├── db.py           # SQLite 建表与访问
-│   ├── ai.py           # AI 层（文字解析/图片识别，可切换供应商）
-│   ├── summarizer.py   # 周/月总结生成
-│   ├── importers.py    # 微信/支付宝账单解析
-│   ├── backup.py       # 启动自动备份
-│   └── config.py       # 配置（data/config.json）
-├── static/             # 网页前端（HTML/CSS/JS + ECharts 本地库）
-├── tests/              # 六套端到端测试 + 回归脚本 + mock LLM
-├── tools/              # 图标生成、mac .app 打包脚本
-├── data/               # 运行时生成：数据库、配置、图片、备份（不提交）
-├── 启动.bat / 停止服务.bat        # Windows 启动/停止
-├── 启动.command / 停止服务.command # macOS 启动/停止
-├── Better-money.app/   # macOS 应用包（可拖入 Dock）
-├── requirements.txt
-├── 设计文档.md
-├── 使用说明.md
-└── README.md
+├── app/                # 电脑端后端（FastAPI 入口、AI 层、备份、共享同步）
+├── static/             # 电脑端网页前端
+├── mobile/             # 手机端（Capacitor + TypeScript，详见 mobile/README.md）
+│   ├── src/domain/     # 业务逻辑（金额整数分、统计、共享合并，全部可单测）
+│   ├── src/db/         # sql.js 本地库与 schema v3 迁移
+│   └── android/        # Android 工程（Gradle 构建，无需 Android Studio）
+├── tests/              # 电脑端测试（单元 + 契约 + 六套 E2E + 安装版冒烟）
+├── docs/               # 文档与设计说明
+├── tools/              # 图标生成、基准备份、跨端互通验证等工具
+├── 设计文档.md / 使用说明.md
+└── 启动.bat / 启动.command   # 源码启动脚本
 ```
 
-## 说明与安全
+---
 
-- 源码模式的数据默认保存在项目的 `data/`；未来 Windows 安装版的数据根目录为 `%LOCALAPPDATA%\BetterMoney`。
-- 完整备份是 ZIP 归档：包含数据库、已去除 API Key 的配置、清单，以及选择包含图片时的图片文件；不要把单独的 `backup.db` 当成完整备份。
-- 服务只监听 `127.0.0.1`，仅供本机使用，无需登录；**不要把端口开放到公网**。
-- API Key 只保存在当前数据目录的 `data/config.json`，不会写进完整备份，也不会上传到任何别的地方。
-- 记账数据（文字/截图）会发送给你配置的大模型服务用于解析，请知悉。
+<p align="center">🐷 记账不难，攒钱也不难——从今晚记下第一笔开始。</p>
