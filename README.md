@@ -7,6 +7,8 @@
   <img alt="ECharts" src="https://img.shields.io/badge/ECharts-5.5-AA344D?style=flat-square">
   <img alt="AI" src="https://img.shields.io/badge/AI-OpenAI%2FDeepSeek%2FQwen%E5%8F%AF%E5%88%87%E6%8D%A2-412991?style=flat-square">
   <img alt="Platform" src="https://img.shields.io/badge/Windows%2FmacOS-%E6%9C%AC%E5%9C%B0%E8%BF%90%E8%A1%8C-0078D6?style=flat-square&logo=windows&logoColor=white">
+  <img alt="Android" src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?style=flat-square&logo=android&logoColor=white">
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-Capacitor-3178C6?style=flat-square&logo=typescript&logoColor=white">
   <img alt="Progress" src="https://img.shields.io/badge/M1--M7-%E5%85%A8%E9%83%A8%E5%AE%8C%E6%88%90-success?style=flat-square">
   <img alt="Last Commit" src="https://img.shields.io/github/last-commit/xianyunqingzhu/Better-money?style=flat-square">
   <img alt="Stars" src="https://img.shields.io/github/stars/xianyunqingzhu/Better-money?style=flat-square">
@@ -28,6 +30,16 @@
 
 > 首次运行若出现 SmartScreen「Windows 已保护你的电脑」，点「更多信息 → 仍要运行」。
 > 每次推送 `v*` 标签（如 `v1.0.0`）会自动构建并挂载新安装包到 Release。
+
+## 📱 手机端（Android）
+
+Better-money 现在也有**独立运行的 Android 应用**（v1.1.0 起），数据不依赖电脑、不需要云端：
+
+- 下载：**[Releases 页面](https://github.com/xianyunqingzhu/Better-money/releases)** 里的 `better-money-app-<版本>.apk`（Android 8.0+；覆盖安装数据保留）
+- 功能：智能文字记账、拍照/相册识别小票、目标清单、周/月总结、图表分析、历史筛选、完整备份——与电脑端规则一致
+- **与电脑交换账本**：两端「设置 → 数据与共享」导出/导入共享 ZIP（微信/USB/网盘传递即可）；同一天两边都改过才冲突，可逐条处理
+- 共享包不含 API Key / 总结 / 图片原件；API Key 只保存在手机本地
+- 源码与构建说明见 `mobile/README.md`，共享包格式见 `docs/共享同步包格式.md`
 
 ## 快速开始
 
