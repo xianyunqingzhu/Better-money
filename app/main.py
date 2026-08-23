@@ -46,6 +46,16 @@ app = FastAPI(title="Better-money", lifespan=lifespan)
 app.include_router(data_router)
 
 
+@app.middleware("http")
+async def no_cache_static(request, call_next):
+    """页面与静态资源不缓存：安装版升级后浏览器立即拿到新 UI。"""
+    response = await call_next(request)
+    path = request.url.path
+    if path == "/" or path.startswith("/static"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 # ---------- 基础 ----------
 
 @app.get("/api/health")
