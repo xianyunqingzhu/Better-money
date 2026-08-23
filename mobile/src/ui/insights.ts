@@ -54,7 +54,7 @@ export function renderInsights(ctx: App) {
   const catList = $("#cat-list");
   catList.innerHTML = "";
   if (!catData.length) {
-    catList.innerHTML = '<div class="empty-state">本月还没有支出记录。<br>去「记一笔」添加第一笔吧。</div>';
+    catList.innerHTML = '<div class="empty-state">本月还没有支出记录。<br>在首页智能解析或手动记账添加第一笔吧。</div>';
   }
   const total = catData.reduce((sum, c) => sum + c.value, 0);
   catData.forEach((c, i) => {
@@ -67,8 +67,7 @@ export function renderInsights(ctx: App) {
     );
     row.addEventListener("click", () => {
       historyFilter.category = c.name;
-      renderHistory(ctx);
-      document.querySelector(".pages")?.scrollTo({ left: document.documentElement.clientWidth, behavior: "smooth" });
+      openHistoryOverlay(ctx);
     });
     catList.append(row);
   });
@@ -118,10 +117,16 @@ export function renderInsights(ctx: App) {
   });
 
   renderGoalProgress(ctx);
+}
+
+export function openHistoryOverlay(ctx: App) {
+  $("#overlay-history").classList.remove("hidden");
+  document.body.classList.add("overlay-open");
   renderHistory(ctx);
 }
 
 export function renderHistory(ctx: App) {
+  if ($("#overlay-history").classList.contains("hidden")) return;
   const box = $("#history-list");
   const filters = $("#history-filters");
   if (filters.dataset.bound !== "1") {

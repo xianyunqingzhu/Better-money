@@ -7,6 +7,7 @@ import { $, el, openSheet, closeSheet, openOverlay } from "./ui/dom";
 import { openEntry } from "./ui/entry";
 import { openConfirmPanel } from "./ui/confirm";
 import { openOverlayGoals } from "./ui/goals";
+import { openHistoryOverlay } from "./ui/insights";
 import { renderSummaries } from "./ui/summaries";
 import { openSettingsOverlay } from "./ui/settings";
 import type { PickedImage } from "./platform/images";
@@ -33,8 +34,8 @@ function bindEvents() {
     // 滑动到第二页后允许其内部滚动；页面本身不锁定
   });
 
-  // 记一笔
-  $("#entry-btn").addEventListener("click", () => openEntry(app));
+  // 手动记账
+  $("#manual-entry-btn").addEventListener("click", () => openEntry(app));
 
   // 第二页入口
   $("#go-entry-goals").addEventListener("click", () => openOverlayGoals(app));
@@ -42,6 +43,7 @@ function bindEvents() {
     openOverlay("#overlay-summaries");
     renderSummaries(app);
   });
+  $("#go-entry-history").addEventListener("click", () => openHistoryOverlay(app));
   $("#go-entry-settings").addEventListener("click", () => openSettingsOverlay(app));
 
   // 图片入口

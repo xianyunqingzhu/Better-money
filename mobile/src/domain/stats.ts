@@ -91,14 +91,14 @@ export function dailyTrend(
   return result;
 }
 
-/** 近 8 周柱状对比（周一起算，最后一项为本周）。 */
+/** 近 8 周柱状对比（周一起算，最后一项为本周；含今天所在的自然周）。 */
 export function weeklyComparison(
   transactions: readonly TransactionRow[],
   now: Date = new Date(),
 ): WeekPoint[] {
-  const today = now.getDay() === 0 ? addDays(toIso(now), -7) : toIso(now);
+  const today = toIso(now);
   const todayDate = parseDate(today)!;
-  const weekday = (todayDate.getDay() + 6) % 7; // 周一=0
+  const weekday = (todayDate.getDay() + 6) % 7; // 周一=0（周日=6）
   const thisMonday = addDays(today, -weekday);
   const eightWeeksAgo = addDays(thisMonday, -7 * 7);
   const byDate = new Map<string, number>();

@@ -29,6 +29,13 @@ export const PUBLIC_SETTING_KEYS = [
   "cooldown_days",
 ] as const;
 
+/** 「应用包内设置」时实际写入的键：初始余额与起始日期绝不自动覆盖本机。 */
+export const APPLIED_SETTING_KEYS = [
+  "monthly_budget",
+  "auto_save_ratio",
+  "cooldown_days",
+] as const;
+
 const TS_RE = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const UUID_RE = /^[0-9a-fA-F]{32}$/;
@@ -370,7 +377,7 @@ export async function exportSharePackage(repo: LedgerRepo): Promise<ExportResult
   const manifest = {
     format: SHARE_FORMAT,
     format_version: SHARE_FORMAT_VERSION,
-    app_version: "1.1.0",
+    app_version: "1.1.1",
     schema_version: SHARE_SCHEMA_VERSION,
     device_id: deviceId,
     device_name: cfg.device_name || "手机",
@@ -841,7 +848,7 @@ export function previewImport(repo: LedgerRepo, pkg: SharePackage): ImportPrevie
   const diff = diffAgainstLocal(repo, pkg);
   const cfg = repo.getConfig();
   const localSettings = localPublicSettings(cfg);
-  const settingsConflict = PUBLIC_SETTING_KEYS.some(
+  const settingsConflict = APPLIED_SETTING_KEYS.some(
     (key) => localSettings[key] !== pkg.settings[key],
   );
   const txDates = [...new Set(pkg.transactions.map((t) => t.date))].sort();
@@ -962,9 +969,8 @@ export async function applyImport(
   decisions: ImportDecisions,
 ): Promise<ImportResult> {
   if (decisions.settings === "apply_package") {
+    // 只导入可共享的账本参数；初始余额与起始日期保持本机设置
     await repo.updateConfig({
-      initial_balance: pkg.settings.initial_balance,
-      initial_balance_date: pkg.settings.initial_balance_date,
       monthly_budget: pkg.settings.monthly_budget,
       auto_save_ratio: pkg.settings.auto_save_ratio,
       cooldown_days: pkg.settings.cooldown_days,

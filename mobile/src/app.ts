@@ -6,7 +6,7 @@ import type { AppConfig } from "./domain/types";
 import { platformStorage } from "./platform/storage";
 import { $, toast } from "./ui/dom";
 import { renderHome } from "./ui/home";
-import { renderInsights } from "./ui/insights";
+import { renderHistory, renderInsights } from "./ui/insights";
 import { renderGoalsOverlay, renderGoalProgress } from "./ui/goals";
 import { renderSummaries } from "./ui/summaries";
 
@@ -46,6 +46,7 @@ export class App {
     await this.refreshAll();
     renderGoalsOverlay(this);
     renderSummaries(this);
+    renderHistory(this);
   }
 
   toast(message: string, type: "info" | "success" | "error" = "info") {

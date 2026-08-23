@@ -25,7 +25,7 @@ function Wait-Record {
 function Invoke-Health {
     param([int]$Port)
     $resp = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/api/health" -TimeoutSec 2
-    if (-not $resp.ok -or $resp.app_id -ne "better-money" -or $resp.version -ne "1.1.0" -or $resp.protocol -ne 1) {
+    if (-not $resp.ok -or $resp.app_id -ne "better-money" -or $resp.version -ne "1.1.1" -or $resp.protocol -ne 1) {
         throw "健康身份校验失败：$($resp | ConvertTo-Json -Compress)"
     }
     return $resp

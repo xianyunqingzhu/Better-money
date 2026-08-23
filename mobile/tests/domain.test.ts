@@ -1,7 +1,7 @@
 /** 账本算术移植基线：断言与 tests/test_ledger.py、test_goals.py、test_stats.py 对齐。 */
 import { describe, expect, it } from "vitest";
 import { allocateSavings } from "../src/domain/goals";
-import { calculateBalance, monthlySnapshot, plannedAmount } from "../src/domain/ledger";
+import { calculateBalance, monthlySnapshot, plannedAmount, summaryCard } from "../src/domain/ledger";
 import { toCents } from "../src/domain/money";
 import { categoryBreakdown, dailyTrend, monthList, monthTotals, statsForMonth, weeklyComparison } from "../src/domain/stats";
 import type { AdjustmentRow, AppConfig, GoalRow, TransactionRow } from "../src/domain/types";
@@ -230,5 +230,43 @@ describe("money helpers", () => {
     expect(toCents("¥15")).toBe(1500);
     expect(toCents("15块")).toBe(1500);
     expect(toCents(0.1 + 0.2)).toBe(30);
+  });
+});
+
+describe("余额单位回归（真实电脑数据场景）", () => {
+  it("summaryCard 余额不做二次除 100", () => {
+    const c = cfg({ initial_balance: 369.16, initial_balance_date: "2026-08-17" });
+    const txs = [
+      tx({ date: "2026-08-18", amount: 29.9, type: "支出", category: "餐饮" }),
+      tx({ date: "2026-08-20", amount: 817.24, type: "收入", category: "兼职" }),
+      tx({ date: "2026-08-21", amount: 597.76, type: "支出", category: "购物" }),
+    ];
+    const card = summaryCard(c, "2026-08", txs, [], [], new Date(2026, 7, 23));
+    expect(card.balance).toBe(558.74);
+    expect(card.monthIncome).toBe(817.24);
+    expect(card.monthExpense).toBe(627.66);
+  });
+
+  it("todaySpendable 按元返回", () => {
+    const c = cfg({ initial_balance: 0, initial_balance_date: "2026-08-01", monthly_budget: 1000 });
+    const txs = [tx({ date: "2026-08-05", amount: 300, type: "支出", category: "餐饮" })];
+    const card = summaryCard(c, "2026-08", txs, [], [], new Date(2026, 7, 23));
+    // 剩余 700 元 / 剩余 9 天(23~31) = 77.78
+    expect(card.todaySpendable).toBe(77.78);
+  });
+});
+
+describe("周对比周日回归", () => {
+  it("周日时本周窗口包含当天所在自然周", () => {
+    // 2026-08-23 是周日；08-17~08-23 应为「本周」
+    const sunday = new Date(2026, 7, 23);
+    const txs = [
+      tx({ date: "2026-08-22", amount: 50, type: "支出", category: "餐饮" }),
+      tx({ date: "2026-08-17", amount: 20, type: "支出", category: "餐饮" }),
+    ];
+    const weekly = weeklyComparison(txs, sunday);
+    expect(weekly.length).toBe(8);
+    expect(weekly[7].label).toBe("本周");
+    expect(weekly[7].value).toBe(70); // 08-17~08-23 合计 70
   });
 });

@@ -59,6 +59,10 @@ PUBLIC_SETTING_KEYS = (
     "auto_save_ratio", "cooldown_days",
 )
 
+# 「应用包内设置」时实际写入的键：初始余额与起始日期是本机账本口径，
+# 包内仅作参考/预填信息，绝不自动覆盖本机。
+APPLIED_SETTING_KEYS = ("monthly_budget", "auto_save_ratio", "cooldown_days")
+
 TX_FIELDS = (
     "date", "amount", "type", "category", "merchant", "note", "source",
     "estimated",
@@ -791,7 +795,7 @@ def preview_import(token: str) -> dict:
         local_settings = _local_public_settings(cfg)
         settings_conflict = any(
             local_settings.get(key) != package_settings.get(key)
-            for key in PUBLIC_SETTING_KEYS
+            for key in APPLIED_SETTING_KEYS
         )
         tx_dates = sorted({t["date"] for t in pkg["transactions"]})
         return {
@@ -887,7 +891,8 @@ def apply_import(token: str, decisions: dict) -> dict:
     cfg = load_config()
 
     if decisions.get("settings") == "apply_package":
-        for key in PUBLIC_SETTING_KEYS:
+        # 只导入可共享的账本参数；初始余额与起始日期保持本机设置
+        for key in APPLIED_SETTING_KEYS:
             cfg[key] = pkg["settings"][key]
         save_config(cfg)
 

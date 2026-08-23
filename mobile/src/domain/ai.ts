@@ -167,9 +167,10 @@ async function chat(
 ): Promise<string> {
   if (!cfg.api_key) throw new AIUnavailableError("未配置 API Key，请在「设置」页填写");
   if (!cfg.api_base) throw new AIUnavailableError("未填写 API Base");
+  const base = cfg.api_base.replace(/\/+$/, "");
   let response: Response;
   try {
-    response = await fetch(`${cfg.api_base.replace(/\/+$/, "")}/chat/completions`, {
+    response = await fetch(`${base}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -183,11 +184,28 @@ async function chat(
       }),
     });
   } catch (e) {
-    throw new AIUnavailableError(String(e));
+    throw new AIUnavailableError(`网络请求失败：${String(e)}`);
+  }
+  // 某些兼容服务不支持 json_object：去掉后重试一次（与电脑端行为一致）
+  if (response.status === 400) {
+    try {
+      response = await fetch(`${base}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${cfg.api_key}`,
+        },
+        body: JSON.stringify({ model, messages, temperature: 0 }),
+      });
+    } catch (e) {
+      throw new AIUnavailableError(`网络请求失败：${String(e)}`);
+    }
   }
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
-    throw new AIUnavailableError(`AI 服务返回 ${response.status}：${detail.slice(0, 200)}`);
+    throw new AIUnavailableError(
+      `AI 服务返回 ${response.status}：${detail.slice(0, 300)}`,
+    );
   }
   const data = (await response.json()) as { choices?: { message?: { content?: string } }[] };
   return data.choices?.[0]?.message?.content || "";

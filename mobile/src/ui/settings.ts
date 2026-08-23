@@ -87,13 +87,12 @@ export function renderSettings(ctx: App) {
     if (base) apiBase.value = base;
   });
   testBtn.addEventListener("click", async () => {
-    testResult.textContent = "连接测试中…";
+    const base = apiBase.value.trim();
+    const key = apiKey.value.trim();
+    const model = modelText.value.trim();
+    testResult.textContent = `连接测试中…（${base || "未填 Base"} · ${model || "未填模型"}）`;
     try {
-      await testConnection({
-        api_base: apiBase.value.trim(),
-        api_key: apiKey.value.trim(),
-        model: modelText.value.trim(),
-      });
+      await testConnection({ api_base: base, api_key: key, model });
       testResult.textContent = "连接成功 ✓";
     } catch (e) {
       testResult.textContent = `连接失败：${e instanceof Error ? e.message : String(e)}`;
@@ -106,6 +105,9 @@ export function renderSettings(ctx: App) {
     el("div", { class: "form-row" }, [el("label", {}, ["文本模型"]), modelText]),
     el("div", { class: "form-row" }, [el("label", {}, ["视觉模型"]), modelVision]),
     el("div", { class: "btn-row" }, [testBtn, testResult]),
+    el("p", { class: "muted small" }, [
+      "提示：Key 属于哪家服务商，就把 Base 和模型填成哪家的（与电脑端「设置 → AI」保持一致即可）。",
+    ]),
   );
   body.append(aiGroup);
 
@@ -166,7 +168,7 @@ export function renderSettings(ctx: App) {
   aboutGroup.append(el("h3", {}, ["版本与帮助"]));
   aboutGroup.append(
     el("p", { class: "muted small" }, [
-      "Better-money 1.1.0 · 手机端独立本地账本，不依赖云端。",
+      "Better-money 1.1.1 · 手机端独立本地账本，不依赖云端。",
     ]),
     el("p", { class: "muted small" }, [
       "GitHub Releases（APK 与 SHA-256 校验值）：",
@@ -297,7 +299,7 @@ function renderSharePreview(ctx: App, preview: ImportPreview) {
     box.append(
       el("div", { class: "share-day" }, [
         el("p", { class: "small", style: "margin-top:0" }, [
-          `公开设置不同：本机 预算 ${preview.settings.local.monthly_budget} / 包内 预算 ${preview.settings.package.monthly_budget}`,
+          `公开账本设置不同：本机 预算 ${preview.settings.local.monthly_budget} / 包内 预算 ${preview.settings.package.monthly_budget}`,
         ]),
         el("label", { class: "small" }, [
           el("input", { type: "radio", name: "share-settings", value: "keep_local", checked: "checked" }),
@@ -306,6 +308,10 @@ function renderSharePreview(ctx: App, preview: ImportPreview) {
         el("label", { class: "small", style: "margin-left:12px" }, [
           el("input", { type: "radio", name: "share-settings", value: "apply_package" }),
           " 应用包内设置",
+        ]),
+        el("p", { class: "muted small", style: "margin-bottom:0" }, [
+          "「应用包内设置」只导入月预算、自动存比例与冷静期天数；" +
+            "初始余额与起始日期不会自动导入（首次导入完成后如需采用会单独询问你）。",
         ]),
       ]),
     );
@@ -429,10 +435,29 @@ async function doApplyShare(ctx: App) {
     decisions.dupes![cb.dataset.uuid!] = "drop";
   });
   try {
+    // 首次导入：本机还没设初始余额日期，而包内有参考值时，单独询问是否采用
+    const hadNoInitialDate = !ctx.config.initial_balance_date;
+    const pkg = pendingPackage;
     const result = await applyImport(ctx.repo, pendingPackage, decisions);
     pendingPackage = null;
     closeSheet("#share-sheet");
     await ctx.afterDataChange();
+    if (hadNoInitialDate && pkg.settings.initial_balance_date) {
+      const adopted = await confirmDialog(
+        `是否采用包内的初始余额 ¥${fmtMoney(pkg.settings.initial_balance)}（起始 ` +
+          `${pkg.settings.initial_balance_date}）作为本机初始余额？\n\n` +
+          "不采用的话，请稍后在「设置 → 账本」里手动填写，否则余额计算会不完整。",
+      );
+      if (adopted) {
+        await ctx.repo.updateConfig({
+          initial_balance: pkg.settings.initial_balance,
+          initial_balance_date: pkg.settings.initial_balance_date,
+        });
+        await ctx.repo.save();
+        await ctx.refreshAll();
+        app.toast("已设置初始余额，余额已按电脑端口径计算", "success");
+      }
+    }
     renderSettings(ctx);
     app.toast(
       `导入完成：新增 ${result.add_transactions}、修改 ${result.modify_transactions}、删除 ${result.delete_transactions}`,
@@ -451,7 +476,7 @@ async function createFullBackup(ctx: App, includeImages: boolean) {
     const manifest = {
       format: "better-money-backup-mobile",
       format_version: 1,
-      app_version: "1.1.0",
+      app_version: "1.1.1",
       schema_version: 3,
       created_at: new Date().toISOString(),
       includes_images: includeImages,

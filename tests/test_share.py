@@ -606,7 +606,12 @@ def test_settings_preview_and_apply(device_a, device_b):
     switch_home(device_a)
     conn = home_conn()
     cfg = load_config()
-    cfg.update({"monthly_budget": 2000.0, "cooldown_days": 10})
+    cfg.update({
+        "monthly_budget": 2000.0,
+        "cooldown_days": 10,
+        "initial_balance": 369.16,
+        "initial_balance_date": "2026-08-17",
+    })
     save_config(cfg)
     conn.commit()
     conn.close()
@@ -618,6 +623,9 @@ def test_settings_preview_and_apply(device_a, device_b):
     assert preview["settings"]["conflict"]
     assert load_config()["monthly_budget"] == 2000.0
     assert load_config()["cooldown_days"] == 10
+    # 初始余额与起始日期绝不自动导入
+    assert load_config()["initial_balance"] == 0.0
+    assert load_config()["initial_balance_date"] == ""
 
     # 默认保留本机：改回去后再导一次
     cfg = load_config()

@@ -1416,6 +1416,7 @@ async function openShareImport(file) {
       <span class="muted">包内：余额 ${preview.settings.package.initial_balance}（起始 ${preview.settings.package.initial_balance_date || '—'}）· 预算 ${preview.settings.package.monthly_budget} · 自动存 ${preview.settings.package.auto_save_ratio} · 冷静期 ${preview.settings.package.cooldown_days} 天</span><br>
       <label><input type="radio" name="share-settings" value="keep_local" checked> 保留本机设置（推荐）</label>
       <label><input type="radio" name="share-settings" value="apply_package"> 应用包内设置</label>
+      <p class="muted" style="margin: 6px 0 0">「应用包内设置」只导入月预算、自动存比例与冷静期天数；初始余额与起始日期不会自动导入，仅在手机首次导入时作为参考值询问是否采用。</p>
     </div>`);
   }
 

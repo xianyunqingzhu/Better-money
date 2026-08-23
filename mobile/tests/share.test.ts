@@ -525,7 +525,12 @@ describe("导入合并", () => {
 
   it("settings preview and apply", async () => {
     const a = await openA();
-    await a.updateConfig({ monthly_budget: 2000, cooldown_days: 10 });
+    await a.updateConfig({
+      monthly_budget: 2000,
+      cooldown_days: 10,
+      initial_balance: 369.16,
+      initial_balance_date: "2026-08-17",
+    });
     const pkgA = await exportSharePackage(a);
 
     const b = await openB();
@@ -535,6 +540,9 @@ describe("导入合并", () => {
     expect(preview.settings.conflict).toBe(true);
     expect(b.getConfig().monthly_budget).toBe(2000);
     expect(b.getConfig().cooldown_days).toBe(10);
+    // 初始余额与起始日期绝不自动导入
+    expect(b.getConfig().initial_balance).toBe(0);
+    expect(b.getConfig().initial_balance_date).toBe("");
 
     await b.updateConfig({ monthly_budget: 3000 });
     await importPackage(b, pkgA.zip);

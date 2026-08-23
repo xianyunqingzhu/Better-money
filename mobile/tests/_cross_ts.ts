@@ -40,7 +40,6 @@ async function main() {
     }));
   } else if (mode === "roundtrip") {
     const pkg = await parseSharePackage(readFileSync(zipPath!));
-    const preview = previewImport(repo, pkg);
     const result = await applyImport(repo, pkg, {});
     const exported = await exportSharePackage(repo);
     writeFileSync(exportPath!, Buffer.from(exported.zip));

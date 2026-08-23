@@ -142,11 +142,13 @@ export function summaryCard(
   const spendable = budget > 0 ? (budget - monthExpense) / Math.max(daysLeft, 1) : 0;
   const round = (cents: number) => Number(centsToDisplay(cents));
   return {
-    balance: round(snap.closingBalance),
+    // snap.closingBalance 已经是「元」，不能再按分折算
+    balance: snap.closingBalance,
     monthExpense: round(monthExpense),
     monthIncome: round(income),
     monthlyBudget: round(budget),
-    todaySpendable: Number(spendable.toFixed(2)),
+    // spendable 是「分」，折回元
+    todaySpendable: Number((spendable / 100).toFixed(2)),
     daysLeft,
     budgetRatio: ratio,
     plannedAmount: snap.plannedAmount,

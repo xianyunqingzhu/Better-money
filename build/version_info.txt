@@ -1,7 +1,7 @@
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(1, 1, 0, 0),
-    prodvers=(1, 1, 0, 0),
+    filevers=(1, 1, 1, 0),
+    prodvers=(1, 1, 1, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -14,9 +14,9 @@ VSVersionInfo(
       StringTable('080404b0', [
         StringStruct('CompanyName', 'Better-money'),
         StringStruct('FileDescription', 'Better-money 个人记账与储蓄助手'),
-        StringStruct('FileVersion', '1.1.0'),
+        StringStruct('FileVersion', '1.1.1'),
         StringStruct('ProductName', 'Better-money'),
-        StringStruct('ProductVersion', '1.1.0'),
+        StringStruct('ProductVersion', '1.1.1'),
         StringStruct('OriginalFilename', 'BetterMoney.exe'),
         StringStruct('LegalCopyright', '本地记账工具，数据保存在本机')
       ])

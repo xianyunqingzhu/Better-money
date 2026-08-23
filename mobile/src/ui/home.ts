@@ -1,9 +1,11 @@
-/** 页面一：概览五项数据、预算提醒与快速手动记账。 */
+/** 页面一：概览五项数据、预算提醒、智能解析（内联）与图片入口。 */
 import { app, type App } from "../app";
+import { parseText } from "../domain/ai";
 import { monthBounds, todayIso } from "../domain/dates";
 import { summaryCard } from "../domain/ledger";
-import { EXPENSE_CATS, INCOME_CATS, VALID_TYPES } from "../domain/types";
+import { EXPENSE_CATS, INCOME_CATS } from "../domain/types";
 import { $, el, fmtMoney } from "./dom";
+import { openConfirmPanel } from "./confirm";
 
 const CATS_BY_TYPE: Record<string, string[]> = {
   支出: EXPENSE_CATS,
@@ -71,57 +73,65 @@ export function renderHome(ctx: App) {
     }
   }
 
-  renderQuickForm(ctx, first, last);
+  renderAiEntry(ctx, first, last);
 }
 
-function renderQuickForm(ctx: App, _first: string, _last: string) {
-  const box = $("#quick-form");
+function renderAiEntry(ctx: App, _first: string, _last: string) {
+  const box = $("#ai-entry");
+  if (box.dataset.bound === "1") return;
+  box.dataset.bound = "1";
   box.innerHTML = "";
-  const type = el("select", { id: "quick-type" });
-  for (const t of VALID_TYPES) type.append(el("option", { value: t }, [t]));
-  const amount = el("input", {
-    id: "quick-amount",
-    type: "number",
-    inputmode: "decimal",
-    step: "0.01",
-    min: "0.01",
-    placeholder: "金额（元）",
+
+  const date = el("input", { id: "ai-date", type: "date", value: todayIso() });
+  const text = el("textarea", {
+    id: "ai-text",
+    placeholder: "例如：午饭食堂 15\n奶茶 12\n昨天兼职 200\n聚餐 200 4人AA",
   });
-  const date = el("input", { id: "quick-date", type: "date", value: todayIso() });
-  const category = el("select", { id: "quick-category" });
-  const fillCats = () => {
-    category.innerHTML = "";
-    for (const c of categoryOptions(type.value)) {
-      category.append(el("option", { value: c }, [c]));
-    }
-  };
-  type.addEventListener("change", fillCats);
-  fillCats();
-  const submit = el("button", { class: "btn primary", id: "quick-submit" }, ["记下这笔"]);
-  submit.addEventListener("click", async () => {
-    const value = Number(amount.value);
-    if (!value || value <= 0) {
-      app.toast("请填写有效金额", "error");
+  const parseBtn = el("button", { class: "btn primary", id: "ai-parse" }, ["智能解析并确认"]);
+  const status = el("p", { class: "muted small", id: "ai-status" });
+
+  parseBtn.addEventListener("click", async () => {
+    const content = text.value.trim();
+    if (!content) {
+      app.toast("请先输入记账内容", "error");
       return;
     }
-    ctx.repo.addTransaction({
-      date: date.value || todayIso(),
-      amount: Math.round(value * 100) / 100,
-      type: type.value,
-      category: category.value,
-      merchant: "",
-      note: "",
-      source: "手动",
-    });
-    await ctx.afterDataChange();
-    app.toast("已记下", "success");
-    amount.value = "";
+    parseBtn.textContent = "解析中…";
+    parseBtn.disabled = true;
+    status.textContent = "";
+    try {
+      const result = await parseText(ctx.config, content, date.value || todayIso());
+      if (!result.items.length) {
+        ctx.repo.storePending(content);
+        await ctx.repo.save();
+        app.toast(
+          result.questions.length
+            ? `没有识别出可入账条目：${result.questions.join("；")}`
+            : "没有识别出可入账条目",
+          "error",
+        );
+        return;
+      }
+      text.value = "";
+      openConfirmPanel(ctx, result.items, result.questions, "文字");
+    } catch (e) {
+      ctx.repo.storePending(content);
+      await ctx.repo.save();
+      status.textContent = `解析失败（原文已保留，可改用手动记账）：${
+        e instanceof Error ? e.message : String(e)
+      }`;
+      app.toast("解析失败，原文已保留", "error");
+    } finally {
+      parseBtn.textContent = "智能解析并确认";
+      parseBtn.disabled = false;
+    }
   });
+
   box.append(
-    el("div", { class: "field-grid" }, [type, amount]),
     el("div", { class: "form-row" }, [el("label", {}, ["日期（可补记）"]), date]),
-    el("div", { class: "form-row" }, [el("label", {}, ["分类"]), category]),
-    submit,
+    text,
+    el("div", { class: "btn-row", style: "margin-top:10px" }, [parseBtn]),
+    status,
   );
 }
 

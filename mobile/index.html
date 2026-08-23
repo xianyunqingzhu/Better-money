@@ -23,11 +23,11 @@
         <div class="scroll" id="home-scroll">
           <div class="stat-grid" id="stat-grid"></div>
           <div class="budget-alert hidden" id="budget-alert"></div>
-          <button class="btn primary big-entry" id="entry-btn">记一笔</button>
           <div class="manual-entry card">
-            <h3>手动记账</h3>
-            <div id="quick-form"></div>
+            <h3>智能解析</h3>
+            <div id="ai-entry"></div>
           </div>
+          <button class="btn primary big-entry" id="manual-entry-btn">手动记账</button>
           <div class="image-entry card">
             <h3>小票 / 截图识别</h3>
             <div class="btn-row">
@@ -50,6 +50,7 @@
         <div class="insight-entries">
           <button class="entry-chip" id="go-entry-goals">目标清单</button>
           <button class="entry-chip" id="go-entry-summaries">总结</button>
+          <button class="entry-chip" id="go-entry-history">历史记录</button>
           <button class="entry-chip" id="go-entry-settings">设置</button>
         </div>
         <div class="scroll" id="insights-scroll">
@@ -69,11 +70,6 @@
           <div class="card">
             <h3>目标进度</h3>
             <div id="goal-progress"></div>
-          </div>
-          <div class="card">
-            <h3>历史记录</h3>
-            <div class="filter-row" id="history-filters"></div>
-            <div id="history-list"></div>
           </div>
         </div>
       </section>
@@ -124,6 +120,18 @@
         <h2>总结</h2>
       </div>
       <div class="overlay-body" id="summaries-body"></div>
+    </div>
+
+    <!-- 全屏子页：历史记录 -->
+    <div class="overlay hidden" id="overlay-history">
+      <div class="overlay-head">
+        <button class="btn ghost back-btn" data-close-overlay="overlay-history">‹ 返回</button>
+        <h2>历史记录</h2>
+      </div>
+      <div class="overlay-body">
+        <div class="filter-row" id="history-filters"></div>
+        <div id="history-list"></div>
+      </div>
     </div>
 
     <!-- 全屏子页：设置 -->
