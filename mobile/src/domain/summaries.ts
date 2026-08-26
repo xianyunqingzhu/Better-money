@@ -54,7 +54,8 @@ export function gather(
   wins: readonly SavingsWinRow[],
 ): SummaryGather {
   const expenseContribution = (tx: TransactionRow) =>
-    tx.type === "支出" ? toCents(tx.amount) : tx.type === "退款" ? -toCents(tx.amount) : 0;
+    tx.type === "支出" ? toCents(tx.amount) :
+    tx.type === "退款" && !tx.refund_of ? -toCents(tx.amount) : 0;
 
   const live = transactions.filter((t) => !t.deleted_at && t.date >= start && t.date <= end);
   const expense = live.filter((t) => t.type === "支出" || t.type === "退款")

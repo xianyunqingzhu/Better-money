@@ -18,10 +18,10 @@ export interface WeekPoint {
   value: number;
 }
 
-/** 一笔交易对「支出 − 退款」口径的贡献（分）。 */
+/** 一笔交易对「支出 − 退款」口径的贡献（分）。已配对退款不参与冲减。 */
 function expenseContribution(tx: TransactionRow): number {
   if (tx.type === "支出") return toCents(tx.amount);
-  if (tx.type === "退款") return -toCents(tx.amount);
+  if (tx.type === "退款" && !tx.refund_of) return -toCents(tx.amount);
   return 0;
 }
 

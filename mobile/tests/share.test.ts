@@ -88,6 +88,48 @@ async function importPackage(
   return { preview, result, pkg };
 }
 
+describe("退款配对随共享包传播", () => {
+  it("refund_of 字段导出导入后保留（含原支出修正）", async () => {
+    const a = await openA();
+    a.addTransaction({
+      date: "2026-08-10",
+      amount: 89.9,
+      type: "支出",
+      category: "购物",
+      merchant: "淘宝",
+      note: "",
+      source: "手动",
+    });
+    await a.save();
+    const origUuid = a.listTransactions()[0].uuid;
+    a.saveItems([
+      {
+        date: "2026-08-15",
+        amount: 89.9,
+        type: "退款",
+        category: "购物",
+        merchant: "淘宝",
+        note: "",
+      },
+    ]);
+    await a.save();
+    const exported = await exportSharePackage(a);
+
+    const b = await openB();
+    await importPackage(b, exported.zip);
+    const refund = b.listTransactions().find((t) => t.type === "退款")!;
+    expect(refund.refund_of).toBe(origUuid);
+    expect(refund.date).toBe("2026-08-10");
+    // 全额退：原支出已不在活记录里，而是随 tombstone 传播
+    expect(
+      b.db.query("SELECT id FROM transactions WHERE uuid = ?", [origUuid]).length,
+    ).toBe(0);
+    expect(
+      b.db.query("SELECT id FROM sync_tombstones WHERE uuid = ?", [origUuid]).length,
+    ).toBe(1);
+  });
+});
+
 describe("导出结构", () => {
   it("package structure and no secrets", async () => {
     const repo = await openA();

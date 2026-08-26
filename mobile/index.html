@@ -18,7 +18,6 @@
             <span class="brand">Better-money</span>
             <span class="topbar-month" id="home-month"></span>
           </div>
-          <span class="sync-pill" id="sync-pill"></span>
         </header>
         <div class="scroll" id="home-scroll">
           <div class="stat-grid" id="stat-grid"></div>
@@ -182,9 +181,22 @@
         </div>
         <div class="sheet-body" id="image-sheet-body"></div>
         <div class="sheet-foot">
+          <button class="btn ghost" id="image-add-more">＋ 添加照片</button>
           <button class="btn ghost" data-close-sheet="image-sheet">取消</button>
           <button class="btn primary" id="image-recognize">开始识别</button>
         </div>
+      </div>
+    </div>
+
+    <!-- 退款配对：从历史选择对应花销 -->
+    <div class="sheet hidden" id="refund-pick-sheet">
+      <div class="sheet-backdrop" data-close-sheet="refund-pick-sheet"></div>
+      <div class="sheet-box tall">
+        <div class="sheet-head">
+          <h2>选择对应的花销</h2>
+          <button class="icon-btn" data-close-sheet="refund-pick-sheet">✕</button>
+        </div>
+        <div class="sheet-body" id="refund-pick-body"></div>
       </div>
     </div>
   </div>

@@ -16,6 +16,7 @@ export interface TransactionRow {
   device_id: string;
   deleted_at: string;
   last_synced_at: string;
+  refund_of: string; // 退款配对：指向被修正的原支出 uuid；'' = 独立退款
 }
 
 export interface LineItemRow {

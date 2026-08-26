@@ -44,7 +44,7 @@ export function calculateBalance(
     if (throughDate !== undefined && tx.date > throughDate) continue;
     const cents = toCents(tx.amount);
     if (tx.type === "收入") income += cents;
-    else if (tx.type === "退款") refund += cents;
+    else if (tx.type === "退款" && !tx.refund_of) refund += cents;
     else if (tx.type === "支出") expense += cents;
     else if (LIVE_TRANSFER_TYPES.includes(tx.type)) transferOut += cents;
   }
@@ -87,7 +87,7 @@ export function monthlySnapshot(
     if (tx.date < first || tx.date > last) continue;
     const cents = toCents(tx.amount);
     if (tx.type === "收入") income += cents;
-    else if (tx.type === "退款") refund += cents;
+    else if (tx.type === "退款" && !tx.refund_of) refund += cents;
     else if (tx.type === "支出") expense += cents;
     else if (LIVE_TRANSFER_TYPES.includes(tx.type)) transferOut += cents;
   }
@@ -131,7 +131,7 @@ export function summaryCard(
     if (tx.date < monthStart) continue;
     const cents = toCents(tx.amount);
     if (tx.type === "支出") expense += cents;
-    else if (tx.type === "退款") refund += cents;
+    else if (tx.type === "退款" && !tx.refund_of) refund += cents;
     else if (tx.type === "收入") income += cents;
   }
   const monthExpense = expense - refund;

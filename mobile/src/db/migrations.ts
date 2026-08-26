@@ -1,6 +1,6 @@
 /** 版本化迁移（app/migrations.py 的 TS 移植）。 */
 import type { Database } from "sql.js";
-import { BASE_SCHEMA, SCHEMA_VERSION, SYNC_SCHEMA } from "./schema";
+import { BASE_SCHEMA, SYNC_SCHEMA } from "./schema";
 
 export function uuidHex(): string {
   if (globalThis.crypto && "randomUUID" in globalThis.crypto) {
@@ -100,7 +100,18 @@ export function migrateToVersion3(db: Database) {
     }
   }
 
-  db.run(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+  db.run(`PRAGMA user_version = 3`);
+}
+
+/** v4：退款配对字段。 */
+export function migrateToVersion4(db: Database) {
+  if (tableExists(db, "transactions")) {
+    addColumnIfMissing(db, "transactions", "refund_of", "TEXT NOT NULL DEFAULT ''");
+  }
+  db.run(
+    "CREATE INDEX IF NOT EXISTS idx_transactions_refund_of ON transactions(refund_of)",
+  );
+  db.run("PRAGMA user_version = 4");
 }
 
 /** 与桌面 now_str() 格式一致的本地时间。 */
@@ -113,6 +124,7 @@ export function localNowSql(now: Date = new Date()): string {
 export function runMigrations(db: Database) {
   const version = userVersion(db);
   if (version < 3) migrateToVersion3(db);
+  if (version < 4) migrateToVersion4(db);
 }
 
 export function userVersion(db: Database): number {

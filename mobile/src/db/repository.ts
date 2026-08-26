@@ -1,6 +1,6 @@
 /** 仓储层：交易/目标/总结/对账/待处理（app/main.py 端点的 TS 移植）。 */
 import type { SqlValue } from "sql.js";
-import { addDays, monthBounds, todayIso } from "../domain/dates";
+import { addDays, monthBounds, todayIso, toIso } from "../domain/dates";
 import { allocateSavings } from "../domain/goals";
 import { toCents } from "../domain/money";
 import { calculateBalance } from "../domain/ledger";
@@ -36,6 +36,16 @@ export interface NewTransaction {
   device_id?: string;
   created_at?: string;
   updated_at?: string;
+  /** 退款配对：目标原支出 uuid；"__none__"=显式不配对；空=自动匹配 */
+  refund_of?: string;
+}
+
+export interface RefundPairing {
+  original_uuid: string;
+  original_date: string;
+  original_merchant: string;
+  refund_amount: number;
+  full: boolean;
 }
 
 export class LedgerRepo {
@@ -130,8 +140,8 @@ export class LedgerRepo {
     const result = this.db.transaction(() => {
       this.db.run(
         `INSERT INTO transactions(date, amount, type, category, merchant, note, source,
-          estimated, created_at, updated_at, uuid, device_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          estimated, created_at, updated_at, uuid, device_id, refund_of)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           tx.date,
           tx.amount,
@@ -145,6 +155,7 @@ export class LedgerRepo {
           tx.updated_at ?? now,
           tx.uuid ?? uuidHex(),
           tx.device_id ?? this.localDeviceId(),
+          tx.refund_of ?? "",
         ],
       );
       const id = this.db.queryOne<{ id: number }>(
@@ -186,18 +197,18 @@ export class LedgerRepo {
     }));
   }
 
-  /** 解析/确认面板批量入账（含查重与单品明细），对应 _save_items。 */
+  /** 解析/确认面板批量入账（含查重、单品明细与退款配对），对应 _save_items。 */
   saveItems(items: NewTransaction[], source = "文字") {
     const now = localNowSql();
     const deviceId = this.localDeviceId();
-    const saved: { id: number }[] = [];
+    const saved: { id: number; refund_paired?: RefundPairing }[] = [];
     const skipped: { date: string; amount: number; merchant: string; reason: string }[] = [];
     this.db.transaction(() => {
       for (const item of items) {
         const dup = this.db.queryOne<{ id: number }>(
           `SELECT id FROM transactions
-           WHERE date = ? AND amount = ? AND merchant = ? AND deleted_at = ''`,
-          [item.date, item.amount, item.merchant ?? ""],
+           WHERE date = ? AND amount = ? AND merchant = ? AND type = ? AND deleted_at = ''`,
+          [item.date, item.amount, item.merchant ?? "", item.type],
         );
         if (dup) {
           skipped.push({
@@ -208,10 +219,28 @@ export class LedgerRepo {
           });
           continue;
         }
+        let refundOf = "";
+        if (item.type === "退款") {
+          const explicit = item.refund_of ?? "";
+          if (explicit === "__none__") refundOf = "";
+          else if (explicit) refundOf = explicit;
+          else {
+            const candidates = this.findRefundCandidates(item);
+            if (candidates.length) refundOf = candidates[0].uuid;
+          }
+        }
+        let pairing: RefundPairing | null = null;
+        if (refundOf) {
+          pairing = this.pairRefund(item, refundOf);
+          if (!pairing) {
+            item.refund_of = "";
+            refundOf = "";
+          }
+        }
         this.db.run(
           `INSERT INTO transactions(date, amount, type, category, merchant, note, source,
-            estimated, created_at, updated_at, uuid, device_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            estimated, created_at, updated_at, uuid, device_id, refund_of)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             item.date,
             item.amount,
@@ -225,6 +254,7 @@ export class LedgerRepo {
             now,
             item.uuid ?? uuidHex(),
             deviceId,
+            refundOf,
           ],
         );
         const id = this.db.queryOne<{ id: number }>("SELECT last_insert_rowid() AS id")!.id;
@@ -236,11 +266,108 @@ export class LedgerRepo {
             [id, li.name, li.qty ?? 1, li.price ?? 0, uuidHex(), now],
           );
         }
-        saved.push({ id });
+        saved.push(pairing ? { id, refund_paired: pairing } : { id });
       }
     });
     for (const item of items) this.markSummariesExpired(item.date);
     return { saved, skipped };
+  }
+
+  /** 退款配对候选：商家一致、可退余额足够、60 天内、最近日期优先。 */
+  findRefundCandidates(
+    item: { merchant?: string; amount: number; date: string },
+  ): { uuid: string; date: string; amount: number; merchant: string; category: string; note: string; remaining: number }[] {
+    const merchant = (item.merchant || "").trim();
+    const amount = Math.round(item.amount * 100) / 100;
+    if (!merchant || amount <= 0) return [];
+    const anchor = new Date(item.date + "T00:00:00");
+    if (Number.isNaN(anchor.getTime())) return [];
+    const windowStart = new Date(anchor);
+    windowStart.setDate(windowStart.getDate() - 60);
+    const windowIso = toIso(windowStart);
+    const rows = this.db.query<TransactionRow & { remaining: number }>(
+      `SELECT t.*,
+        (t.amount - COALESCE((SELECT SUM(r.amount) FROM transactions r
+          WHERE r.refund_of = t.uuid AND r.deleted_at = ''), 0)) AS remaining
+       FROM transactions t
+       WHERE t.type = '支出' AND t.deleted_at = '' AND t.merchant = ?
+         AND t.date <= ? AND t.date >= ?
+       ORDER BY t.date DESC, t.id DESC`,
+      [merchant, item.date, windowIso],
+    );
+    const candidates: { uuid: string; date: string; amount: number; merchant: string; category: string; note: string; remaining: number }[] = [];
+    for (const row of rows) {
+      const remaining = Math.round((row.remaining || 0) * 100) / 100;
+      if (remaining + 0.005 >= amount) {
+        candidates.push({
+          uuid: row.uuid,
+          date: row.date,
+          amount: row.amount,
+          merchant: row.merchant,
+          category: row.category,
+          note: row.note,
+          remaining,
+        });
+      }
+      if (candidates.length >= 8) break;
+    }
+    return candidates;
+  }
+
+  /** 修正原支出并改写退款条目；失败返回 null（按独立退款处理）。 */
+  private pairRefund(item: NewTransaction, refundOfUuid: string): RefundPairing | null {
+    const UUID_RE = /^[0-9a-fA-F]{32}$/;
+    if (!UUID_RE.test(refundOfUuid)) return null;
+    const original = this.db.queryOne<TransactionRow>(
+      "SELECT * FROM transactions WHERE uuid = ? AND type = '支出' AND deleted_at = ''",
+      [refundOfUuid],
+    );
+    if (!original) return null;
+    const amount = Math.round(item.amount * 100) / 100;
+    if (amount <= 0) return null;
+    const alreadyRow = this.db.queryOne<{ n: number }>(
+      "SELECT COALESCE(SUM(amount), 0) AS n FROM transactions WHERE refund_of = ? AND deleted_at = ''",
+      [refundOfUuid],
+    );
+    const remaining = Math.round((original.amount - (alreadyRow?.n || 0)) * 100) / 100;
+    if (remaining + 0.005 < amount) return null;
+    const now = localNowSql();
+    const full = Math.abs(remaining - amount) < 0.005;
+    const noteSuffix = `（退货退 ¥${amount.toFixed(2)}）`;
+    if (full) {
+      this.db.run(
+        "UPDATE transactions SET deleted_at = ?, updated_at = ? WHERE uuid = ?",
+        [now, now, refundOfUuid],
+      );
+      this.db.run(
+        `INSERT INTO sync_tombstones(uuid, kind, deleted_at, device_id, synced)
+         VALUES (?, 'transaction', ?, ?, 0)
+         ON CONFLICT(uuid) DO UPDATE SET deleted_at = excluded.deleted_at
+         WHERE excluded.deleted_at > sync_tombstones.deleted_at`,
+        [refundOfUuid, now, this.localDeviceId()],
+      );
+    } else {
+      const newAmount = Math.round((original.amount - amount) * 100) / 100;
+      this.db.run(
+        `UPDATE transactions SET amount = ?, updated_at = ?,
+          note = CASE WHEN note = '' OR note IS NULL THEN ?
+                      WHEN note LIKE '%退货退%' THEN note ELSE note || ? END
+         WHERE uuid = ?`,
+        [newAmount, now, noteSuffix, noteSuffix, refundOfUuid],
+      );
+    }
+    item.refund_of = refundOfUuid;
+    item.date = original.date;
+    if (!item.note) {
+      item.note = `配对退货：${original.date} ${original.merchant}`;
+    }
+    return {
+      original_uuid: refundOfUuid,
+      original_date: original.date,
+      original_merchant: original.merchant,
+      refund_amount: amount,
+      full,
+    };
   }
 
   patchTransaction(id: number, patch: Partial<TransactionRow>): boolean {

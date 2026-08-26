@@ -1,6 +1,6 @@
-/** SQLite schema v3（app/migrations.py BASE_SCHEMA 的移植，含共享同步层）。 */
+/** SQLite schema v4（app/migrations.py BASE_SCHEMA 的移植，含共享同步与退款配对）。 */
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export const BASE_SCHEMA = `
 CREATE TABLE IF NOT EXISTS transactions (
@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS transactions (
     uuid TEXT NOT NULL DEFAULT '',
     device_id TEXT NOT NULL DEFAULT '',
     deleted_at TEXT NOT NULL DEFAULT '',
-    last_synced_at TEXT NOT NULL DEFAULT ''
+    last_synced_at TEXT NOT NULL DEFAULT '',
+    refund_of TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS line_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -116,6 +117,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_goals_uuid ON goals(uuid) WHERE uuid <> '';
 CREATE UNIQUE INDEX IF NOT EXISTS uq_line_items_uuid ON line_items(uuid) WHERE uuid <> '';
 CREATE UNIQUE INDEX IF NOT EXISTS uq_savings_wins_uuid ON savings_wins(uuid) WHERE uuid <> '';
 CREATE INDEX IF NOT EXISTS idx_transactions_deleted ON transactions(deleted_at);
+CREATE INDEX IF NOT EXISTS idx_transactions_refund_of ON transactions(refund_of);
 CREATE INDEX IF NOT EXISTS idx_goals_deleted ON goals(deleted_at);
 CREATE INDEX IF NOT EXISTS idx_savings_wins_deleted ON savings_wins(deleted_at);
 CREATE INDEX IF NOT EXISTS idx_adjustments_reverses ON adjustments(reverses_adjustment_id);

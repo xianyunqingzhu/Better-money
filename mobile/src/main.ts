@@ -65,15 +65,17 @@ function bindEvents() {
 }
 
 let pendingImages: PickedImage[] = [];
+let imageFlowDateDir = todayIso();
 
 async function startImageFlow(source: "camera" | "gallery") {
-  const dateDir = todayIso();
+  imageFlowDateDir = todayIso();
+  pendingImages = [];
   try {
     if (source === "camera") {
-      const photo = await takePhoto(dateDir);
-      if (photo) pendingImages = [photo];
+      const photo = await takePhoto(imageFlowDateDir);
+      if (photo) pendingImages.push(photo);
     } else {
-      pendingImages = await pickImages(dateDir);
+      pendingImages.push(...(await pickImages(imageFlowDateDir, 10)));
     }
   } catch (e) {
     if (e instanceof Error && /cancel/i.test(e.message)) return;
@@ -85,17 +87,49 @@ async function startImageFlow(source: "camera" | "gallery") {
   openSheet("#image-sheet");
 }
 
+/** 追加照片：拍照或相册均保留已有选择，直到 10 张上限。 */
+async function addMoreImages(source: "camera" | "gallery") {
+  const remaining = 10 - pendingImages.length;
+  if (remaining <= 0) {
+    app.toast("最多 10 张，可先移除一些再添加", "error");
+    return;
+  }
+  try {
+    if (source === "camera") {
+      const photo = await takePhoto(imageFlowDateDir);
+      if (photo) pendingImages.push(photo);
+    } else {
+      pendingImages.push(...(await pickImages(imageFlowDateDir, remaining)));
+    }
+  } catch (e) {
+    if (e instanceof Error && /cancel/i.test(e.message)) return;
+    app.toast(`图片获取失败：${e instanceof Error ? e.message : String(e)}`, "error");
+    return;
+  }
+  renderImageSheet();
+}
+
 function renderImageSheet() {
   const body = $("#image-sheet-body");
   body.innerHTML = "";
   const grid = el("div", { class: "thumb-grid" });
   for (const image of pendingImages) {
-    grid.append(
-      el("img", { class: "thumb", "data-path": image.path }),
-    );
+    const wrap = el("div", { class: "thumb-wrap" });
+    const img = el("img", { class: "thumb", "data-path": image.path });
+    wrap.append(img);
+    const removeBtn = el("button", { class: "thumb-remove", type: "button" }, ["✕"]);
+    removeBtn.addEventListener("click", () => {
+      pendingImages = pendingImages.filter((i) => i.path !== image.path);
+      renderImageSheet();
+    });
+    wrap.append(removeBtn);
+    grid.append(wrap);
   }
+  const addBtn = $("#image-add-more") as HTMLButtonElement;
+  addBtn.textContent = pendingImages.length >= 10 ? "已达上限（10 张）" : "＋ 添加照片";
+  addBtn.disabled = pendingImages.length >= 10;
   body.append(
-    el("p", { class: "muted small" }, [`已选 ${pendingImages.length} 张（最多 10 张）`]),
+    el("p", { class: "muted small" }, [`已选 ${pendingImages.length} / 10 张（相册支持长按多选）`]),
     grid,
     el("div", { class: "form-row", style: "margin-top:10px" }, [
       el("label", {}, ["日期（图片上没有时间时使用）"]),
@@ -161,15 +195,17 @@ async function recognizeImages() {
   pendingImages = [];
 }
 
-function handleOnboarding() {
+async function handleOnboarding() {
   if (!app.config.onboarding_completed) {
-    // 空账本首次使用：给出引导提示，不阻塞使用
-    setTimeout(() => {
-      app.toast("首次使用：可在「设置」里配置初始余额、预算与 AI Key", "info");
-    }, 600);
+    // 首次启动：提示一次，随即标记完成，之后不再出现
+    app.toast("首次使用：可在「设置」里配置初始余额、预算与 AI Key", "info");
+    await app.repo.updateConfig({ onboarding_completed: true });
+    await app.repo.save();
+    app.config = app.repo.getConfig();
   }
 }
 
 $("#image-recognize").addEventListener("click", recognizeImages);
+$("#image-add-more").addEventListener("click", () => addMoreImages("gallery"));
 
 bootstrap().catch((e) => console.error(e));

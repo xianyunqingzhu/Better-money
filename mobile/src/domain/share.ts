@@ -8,7 +8,9 @@ import type { AppConfig, GoalRow, SavingsWinRow, TransactionRow } from "./types"
 export const SHARE_FORMAT = "better-money-share";
 export const SHARE_FORMAT_VERSION = 1;
 export const MIN_SHARE_SCHEMA_VERSION = 3;
-export const SHARE_SCHEMA_VERSION = 3;
+/** 读取端接受 3~4；导出仍写 3（refund_of 是附加字段，旧版电脑端可正常读入） */
+export const MAX_SHARE_SCHEMA_VERSION = 4;
+export const EXPORT_SHARE_SCHEMA_VERSION = 3;
 export const MAX_PACKAGE_UNCOMPRESSED = 50 * 1024 * 1024;
 
 export const MEMBERS = [
@@ -180,7 +182,7 @@ export async function parseSharePackageAsync(zipBytes: Uint8Array): Promise<Shar
   );
   const schema = manifest.schema_version as number;
   require_(
-    typeof schema === "number" && MIN_SHARE_SCHEMA_VERSION <= schema && schema <= SHARE_SCHEMA_VERSION,
+    typeof schema === "number" && MIN_SHARE_SCHEMA_VERSION <= schema && schema <= MAX_SHARE_SCHEMA_VERSION,
     `不支持的共享包数据版本：${schema}`,
   );
   require_(
@@ -207,6 +209,10 @@ export async function parseSharePackageAsync(zipBytes: Uint8Array): Promise<Shar
       `交易类型无效：${item.type}`,
     );
     txUuids.add(String(item.uuid));
+    const refundOf = String(item.refund_of ?? "");
+    if (refundOf) {
+      require_(UUID_RE.test(refundOf), `refund_of 无效：${refundOf}`);
+    }
     transactions.push({
       id: 0,
       date: String(item.date),
@@ -223,6 +229,7 @@ export async function parseSharePackageAsync(zipBytes: Uint8Array): Promise<Shar
       device_id: String(item.device_id ?? ""),
       deleted_at: "",
       last_synced_at: "",
+      refund_of: refundOf,
     });
   }
 
@@ -377,8 +384,8 @@ export async function exportSharePackage(repo: LedgerRepo): Promise<ExportResult
   const manifest = {
     format: SHARE_FORMAT,
     format_version: SHARE_FORMAT_VERSION,
-    app_version: "1.1.1",
-    schema_version: SHARE_SCHEMA_VERSION,
+    app_version: "1.1.2",
+    schema_version: EXPORT_SHARE_SCHEMA_VERSION,
     device_id: deviceId,
     device_name: cfg.device_name || "手机",
     platform: "mobile",
@@ -415,6 +422,7 @@ export async function exportSharePackage(repo: LedgerRepo): Promise<ExportResult
         note: t.note,
         source: t.source,
         estimated: Number(t.estimated) || 0,
+        refund_of: t.refund_of || "",
         created_at: t.created_at,
         updated_at: t.updated_at,
       })),
@@ -1001,12 +1009,12 @@ export async function applyImport(
     const insertTx = (peer: TransactionRow, items: { uuid: string; name: string; qty: number; price: number; updated_at: string }[]) => {
       db.run(
         `INSERT INTO transactions(date, amount, type, category, merchant, note, source,
-          estimated, created_at, updated_at, uuid, device_id, deleted_at, last_synced_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?)`,
+          estimated, created_at, updated_at, uuid, device_id, deleted_at, last_synced_at, refund_of)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?)`,
         [
           peer.date, peer.amount, peer.type, peer.category, peer.merchant, peer.note,
           peer.source, peer.estimated, peer.created_at, peer.updated_at, peer.uuid,
-          peer.device_id, peer.updated_at,
+          peer.device_id, peer.updated_at, peer.refund_of || "",
         ],
       );
       const txId = db.queryOne<{ id: number }>("SELECT last_insert_rowid() AS id")!.id;
@@ -1021,11 +1029,12 @@ export async function applyImport(
     const updateTx = (peer: TransactionRow, items: { uuid: string; name: string; qty: number; price: number; updated_at: string }[]) => {
       db.run(
         `UPDATE transactions SET date = ?, amount = ?, type = ?, category = ?, merchant = ?,
-          note = ?, source = ?, estimated = ?, updated_at = ?, last_synced_at = ?
+          note = ?, source = ?, estimated = ?, updated_at = ?, last_synced_at = ?, refund_of = ?
          WHERE uuid = ?`,
         [
           peer.date, peer.amount, peer.type, peer.category, peer.merchant, peer.note,
-          peer.source, peer.estimated, peer.updated_at, peer.updated_at, peer.uuid,
+          peer.source, peer.estimated, peer.updated_at, peer.updated_at,
+          peer.refund_of || "", peer.uuid,
         ],
       );
       const txId = db.queryOne<{ id: number }>(
@@ -1045,12 +1054,12 @@ export async function applyImport(
       db.run(
         `UPDATE transactions SET date = ?, amount = ?, type = ?, category = ?, merchant = ?,
           note = ?, source = ?, estimated = ?, created_at = ?, updated_at = ?, device_id = ?,
-          deleted_at = '', last_synced_at = ?
+          deleted_at = '', last_synced_at = ?, refund_of = ?
          WHERE uuid = ? AND deleted_at <> ''`,
         [
           peer.date, peer.amount, peer.type, peer.category, peer.merchant, peer.note,
           peer.source, peer.estimated, peer.created_at, peer.updated_at, peer.device_id,
-          peer.updated_at, peer.uuid,
+          peer.updated_at, peer.refund_of || "", peer.uuid,
         ],
       );
       const applied = (db.query<{ n: number }>("SELECT changes() AS n")[0]?.n || 0) > 0;

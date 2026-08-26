@@ -193,8 +193,13 @@ export function renderHistory(ctx: App) {
 function historyCard(ctx: App, row: TransactionRow): HTMLElement {
   const isExpense = row.type === "支出";
   const isIncome = row.type === "收入";
+  const isLinkedRefund = row.type === "退款" && !!row.refund_of;
   const amountClass = isExpense ? "expense" : isIncome ? "income" : "";
-  const typePrefix = row.type === "支出" || row.type === "收入" ? "" : row.type + " ";
+  const typePrefix = isLinkedRefund
+    ? "退货退款 "
+    : row.type === "支出" || row.type === "收入"
+      ? ""
+      : row.type + " ";
   const card = el("div", { class: "history-card", "data-id": String(row.id) });
   card.append(
     el("div", { class: "history-head" }, [
@@ -207,6 +212,7 @@ function historyCard(ctx: App, row: TransactionRow): HTMLElement {
       el("span", {}, [row.category]),
       row.merchant ? el("span", {}, [`@${row.merchant}`]) : el("span"),
       row.note ? el("span", {}, [escapeHtml(row.note)]) : el("span"),
+      isLinkedRefund ? el("span", { style: "color:var(--accent)" }, ["已修正原支出"]) : el("span"),
       row.estimated ? el("span", {}, ["估算"]) : el("span"),
       row.source !== "手动" ? el("span", {}, [`来源：${row.source}`]) : el("span"),
     ]),

@@ -17,7 +17,7 @@ export function allocateSavings(
   if (remaining <= 0) return [];
 
   const eligible = goals
-    .filter((g) => !g.deleted_at && ["冷静期", "进行中"].includes(g.status))
+    .filter((g) => !g.deleted_at && ["冷静期", "进行中", "已暂停"].includes(g.status))
     .filter((g) => toCents(g.saved) < toCents(g.price))
     .sort((a, b) => a.priority - b.priority || a.id - b.id);
 

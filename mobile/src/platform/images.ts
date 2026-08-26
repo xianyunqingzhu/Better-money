@@ -109,11 +109,11 @@ export async function takePhoto(dateDir: string): Promise<PickedImage | null> {
   return { path, name: `photo-${Date.now()}${ext}`, bytes };
 }
 
-/** 相册多选（最多 MAX_IMAGES 张）。 */
-export async function pickImages(dateDir: string): Promise<PickedImage[]> {
+/** 相册多选（最多 limit 张）。 */
+export async function pickImages(dateDir: string, limit: number = MAX_IMAGES): Promise<PickedImage[]> {
   const photos = await Camera.pickImages({
     quality: 90,
-    limit: MAX_IMAGES,
+    limit,
   });
   const result: PickedImage[] = [];
   for (const photo of photos.photos) {

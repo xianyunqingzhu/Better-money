@@ -4,7 +4,7 @@ import { LedgerRepo } from "./db/repository";
 import { todayIso } from "./domain/dates";
 import type { AppConfig } from "./domain/types";
 import { platformStorage } from "./platform/storage";
-import { $, toast } from "./ui/dom";
+import { toast } from "./ui/dom";
 import { renderHome } from "./ui/home";
 import { renderHistory, renderInsights } from "./ui/insights";
 import { renderGoalsOverlay, renderGoalProgress } from "./ui/goals";
@@ -35,7 +35,6 @@ export class App {
   async refreshAll() {
     if (!this.initialized) return;
     this.config = this.repo.getConfig();
-    renderSyncPill(this);
     renderHome(this);
     renderInsights(this);
     renderGoalProgress(this);
@@ -55,18 +54,3 @@ export class App {
 }
 
 export const app = new App();
-
-export function renderSyncPill(ctx: App) {
-  const pill = $("#sync-pill");
-  const status = ctx.repo.syncStatus();
-  const last = status.last_import_at
-    ? `上次导入 ${status.last_import_at.slice(5, 16)}`
-    : "尚未导入";
-  if (status.pending_changes > 0) {
-    pill.textContent = `待同步 ${status.pending_changes}`;
-    pill.classList.add("dirty");
-  } else {
-    pill.textContent = `已同步 · ${last}`;
-    pill.classList.remove("dirty");
-  }
-}

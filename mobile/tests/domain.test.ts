@@ -29,6 +29,7 @@ function tx(overrides: Partial<TransactionRow>): TransactionRow {
     device_id: "dev",
     deleted_at: "",
     last_synced_at: "",
+    refund_of: "",
   };
   return { ...base, ...overrides };
 }
