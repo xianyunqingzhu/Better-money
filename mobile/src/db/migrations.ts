@@ -1,6 +1,6 @@
 /** 版本化迁移（app/migrations.py 的 TS 移植）。 */
 import type { Database } from "sql.js";
-import { BASE_SCHEMA, SYNC_SCHEMA } from "./schema";
+import { BASE_SCHEMA, SYNC_SCHEMA, TODO_SCHEMA } from "./schema";
 
 export function uuidHex(): string {
   if (globalThis.crypto && "randomUUID" in globalThis.crypto) {
@@ -125,6 +125,10 @@ export function runMigrations(db: Database) {
   const version = userVersion(db);
   if (version < 3) migrateToVersion3(db);
   if (version < 4) migrateToVersion4(db);
+  if (version < 5) {
+    db.exec(TODO_SCHEMA);
+    db.run("PRAGMA user_version = 5");
+  }
 }
 
 export function userVersion(db: Database): number {

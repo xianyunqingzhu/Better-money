@@ -1,4 +1,4 @@
-/** 页面一：概览五项数据、预算提醒、智能解析（内联）与图片入口。 */
+/** 页面一：待办、概览三项数据、智能解析（内联）与图片入口。 */
 import { app, type App } from "../app";
 import { parseText } from "../domain/ai";
 import { monthBounds, todayIso } from "../domain/dates";
@@ -6,6 +6,7 @@ import { summaryCard } from "../domain/ledger";
 import { EXPENSE_CATS, INCOME_CATS } from "../domain/types";
 import { $, el, fmtMoney } from "./dom";
 import { openConfirmPanel } from "./confirm";
+import { renderHomeTodos } from "./todos";
 
 const CATS_BY_TYPE: Record<string, string[]> = {
   支出: EXPENSE_CATS,
@@ -21,6 +22,7 @@ export function categoryOptions(type: string): string[] {
 }
 
 export function renderHome(ctx: App) {
+  renderHomeTodos(ctx);
   const { first, last } = monthBounds(ctx.month);
   $("#home-month").textContent = ctx.month;
   const card = summaryCard(
@@ -35,8 +37,6 @@ export function renderHome(ctx: App) {
     ["balance", "当前余额", fmtMoney(card.balance)],
     ["expense", "本月支出", fmtMoney(card.monthExpense)],
     ["income", "本月收入", fmtMoney(card.monthIncome)],
-    ["budget", "月预算", fmtMoney(card.monthlyBudget)],
-    ["spendable", "今日可花", fmtMoney(card.todaySpendable)],
   ];
   const grid = $("#stat-grid");
   grid.innerHTML = "";
@@ -47,30 +47,6 @@ export function renderHome(ctx: App) {
         el("div", { class: "stat-value" }, [value]),
       ]),
     );
-  }
-
-  // 预算提醒
-  const alert = $("#budget-alert");
-  const budget = card.monthlyBudget;
-  const ratio = card.budgetRatio;
-  if (budget <= 0) {
-    alert.classList.add("hidden");
-  } else {
-    alert.classList.remove("hidden");
-    const remaining = budget - card.monthExpense;
-    if (ratio > 1) {
-      alert.className = "budget-alert danger";
-      alert.textContent =
-        `⚠️ 本月支出已超预算：已花 ${fmtMoney(card.monthExpense)} / ${fmtMoney(budget)}，` +
-        `超出 ${fmtMoney(-remaining)}（${(ratio * 100).toFixed(0)}%）。`;
-    } else if (ratio > 0.8) {
-      alert.className = "budget-alert warn";
-      alert.textContent =
-        `⚠️ 预算已用 ${(ratio * 100).toFixed(0)}%：已花 ${fmtMoney(card.monthExpense)} / ` +
-        `${fmtMoney(budget)}，剩余 ${fmtMoney(remaining)}。`;
-    } else {
-      alert.classList.add("hidden");
-    }
   }
 
   renderAiEntry(ctx, first, last);
@@ -87,7 +63,7 @@ function renderAiEntry(ctx: App, _first: string, _last: string) {
     id: "ai-text",
     placeholder: "例如：午饭食堂 15\n奶茶 12\n昨天兼职 200\n聚餐 200 4人AA",
   });
-  const parseBtn = el("button", { class: "btn primary", id: "ai-parse" }, ["智能解析并确认"]);
+  const parseBtn = el("button", { class: "btn primary big-entry", id: "ai-parse" }, ["智能解析并确认"]);
   const status = el("p", { class: "muted small", id: "ai-status" });
 
   parseBtn.addEventListener("click", async () => {

@@ -10,6 +10,7 @@ import { openOverlayGoals } from "./ui/goals";
 import { openHistoryOverlay } from "./ui/insights";
 import { renderSummaries } from "./ui/summaries";
 import { openSettingsOverlay } from "./ui/settings";
+import { openTodos } from "./ui/todos";
 import type { PickedImage } from "./platform/images";
 
 async function bootstrap() {
@@ -38,6 +39,7 @@ function bindEvents() {
   $("#manual-entry-btn").addEventListener("click", () => openEntry(app));
 
   // 第二页入口
+  $("#go-entry-todos").addEventListener("click", () => openTodos(app));
   $("#go-entry-goals").addEventListener("click", () => openOverlayGoals(app));
   $("#go-entry-summaries").addEventListener("click", () => {
     openOverlay("#overlay-summaries");
@@ -198,7 +200,7 @@ async function recognizeImages() {
 async function handleOnboarding() {
   if (!app.config.onboarding_completed) {
     // 首次启动：提示一次，随即标记完成，之后不再出现
-    app.toast("首次使用：可在「设置」里配置初始余额、预算与 AI Key", "info");
+    app.toast("首次使用：可在「设置」里配置初始余额与 AI Key", "info");
     await app.repo.updateConfig({ onboarding_completed: true });
     await app.repo.save();
     app.config = app.repo.getConfig();

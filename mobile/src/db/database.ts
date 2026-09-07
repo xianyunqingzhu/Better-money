@@ -48,9 +48,10 @@ export class AppDatabase {
     if (existing) {
       try {
         const db = new SQLRuntime.Database(existing);
+        const previousVersion = userVersion(db);
         runMigrations(db);
         const wrapped = new AppDatabase(db);
-        if (userVersion(db) !== SCHEMA_VERSION) wrapped.markDirty();
+        if (previousVersion !== SCHEMA_VERSION) wrapped.markDirty();
         return wrapped;
       } catch {
         // 主库损坏 → 尝试 .bak

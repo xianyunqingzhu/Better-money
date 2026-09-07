@@ -14,6 +14,7 @@ import {
   type SharePackage,
   ShareError,
 } from "../domain/share";
+import { SCHEMA_VERSION } from "../db/schema";
 import { DB_FILE } from "../db/database";
 import { pickZipFile } from "../platform/images";
 import { isNative } from "../platform/storage";
@@ -45,10 +46,6 @@ export function renderSettings(ctx: App) {
   const initialDate = el("input", {
     id: "set-initial-date", type: "date", value: cfg.initial_balance_date || "",
   });
-  const budget = el("input", {
-    id: "set-budget", type: "number", inputmode: "decimal", step: "0.01", min: "0",
-    value: String(cfg.monthly_budget),
-  });
   const ratio = el("input", {
     id: "set-ratio", type: "number", inputmode: "decimal", step: "0.05", min: "0", max: "1",
     value: String(cfg.auto_save_ratio),
@@ -61,7 +58,6 @@ export function renderSettings(ctx: App) {
   ledgerGroup.append(
     el("div", { class: "form-row" }, [el("label", {}, ["初始余额（元）"]), initialBalance]),
     el("div", { class: "form-row" }, [el("label", {}, ["初始余额日期"]), initialDate]),
-    el("div", { class: "form-row" }, [el("label", {}, ["月预算（元，0 表示不设预算）"]), budget]),
     el("div", { class: "form-row" }, [el("label", {}, ["收入自动存比例（0~1）"]), ratio]),
     el("div", { class: "form-row" }, [el("label", {}, ["冷静期天数"]), cooldown]),
     el("div", { class: "form-row" }, [el("label", {}, ["本机设备名称"]), deviceName]),
@@ -168,7 +164,7 @@ export function renderSettings(ctx: App) {
   aboutGroup.append(el("h3", {}, ["版本与帮助"]));
   aboutGroup.append(
     el("p", { class: "muted small" }, [
-      "Better-money 1.1.2 · 手机端独立本地账本，不依赖云端。",
+      "Better-money 1.1.3 · 手机端独立本地账本，不依赖云端。",
     ]),
     el("p", { class: "muted small" }, [
       "GitHub Releases（APK 与 SHA-256 校验值）：",
@@ -189,7 +185,6 @@ async function saveSettings(ctx: App) {
   const patch = {
     initial_balance: Math.round(Number(($("#set-initial-balance") as HTMLInputElement).value || 0) * 100) / 100,
     initial_balance_date: ($("#set-initial-date") as HTMLInputElement).value,
-    monthly_budget: Math.round(Number(($("#set-budget") as HTMLInputElement).value || 0) * 100) / 100,
     auto_save_ratio: Number(($("#set-ratio") as HTMLInputElement).value || 0),
     cooldown_days: Number(($("#set-cooldown") as HTMLInputElement).value || 7),
     device_name: ($("#set-device-name") as HTMLInputElement).value.trim() || "手机",
@@ -299,7 +294,7 @@ function renderSharePreview(ctx: App, preview: ImportPreview) {
     box.append(
       el("div", { class: "share-day" }, [
         el("p", { class: "small", style: "margin-top:0" }, [
-          `公开账本设置不同：本机 预算 ${preview.settings.local.monthly_budget} / 包内 预算 ${preview.settings.package.monthly_budget}`,
+          "公开账本设置与包内不同，请选择保留本机设置或应用包内设置。",
         ]),
         el("label", { class: "small" }, [
           el("input", { type: "radio", name: "share-settings", value: "keep_local", checked: "checked" }),
@@ -310,7 +305,7 @@ function renderSharePreview(ctx: App, preview: ImportPreview) {
           " 应用包内设置",
         ]),
         el("p", { class: "muted small", style: "margin-bottom:0" }, [
-          "「应用包内设置」只导入月预算、自动存比例与冷静期天数；" +
+          "「应用包内设置」导入自动存比例与冷静期等兼容设置；" +
             "初始余额与起始日期不会自动导入（首次导入完成后如需采用会单独询问你）。",
         ]),
       ]),
@@ -476,8 +471,8 @@ async function createFullBackup(ctx: App, includeImages: boolean) {
     const manifest = {
       format: "better-money-backup-mobile",
       format_version: 1,
-      app_version: "1.1.2",
-      schema_version: 3,
+      app_version: "1.1.3",
+      schema_version: SCHEMA_VERSION,
       created_at: new Date().toISOString(),
       includes_images: includeImages,
     };

@@ -20,13 +20,16 @@
           </div>
         </header>
         <div class="scroll" id="home-scroll">
+          <div class="card">
+            <h3>待办事项<span class="muted small" id="home-todos-count"></span></h3>
+            <div id="home-todos"></div>
+          </div>
           <div class="stat-grid" id="stat-grid"></div>
-          <div class="budget-alert hidden" id="budget-alert"></div>
           <div class="manual-entry card">
             <h3>智能解析</h3>
             <div id="ai-entry"></div>
           </div>
-          <button class="btn primary big-entry" id="manual-entry-btn">手动记账</button>
+          <button class="btn primary manual-entry-button" id="manual-entry-btn">手动记账</button>
           <div class="image-entry card">
             <h3>小票 / 截图识别</h3>
             <div class="btn-row">
@@ -47,6 +50,7 @@
           </div>
         </header>
         <div class="insight-entries">
+          <button class="entry-chip" id="go-entry-todos">待办事项</button>
           <button class="entry-chip" id="go-entry-goals">目标清单</button>
           <button class="entry-chip" id="go-entry-summaries">总结</button>
           <button class="entry-chip" id="go-entry-history">历史记录</button>
@@ -72,6 +76,14 @@
           </div>
         </div>
       </section>
+    </div>
+
+    <div class="overlay hidden" id="overlay-todos">
+      <div class="overlay-head">
+        <button class="btn ghost back-btn" data-close-overlay="overlay-todos">返回</button>
+        <h2 id="todos-title">待办事项</h2>
+      </div>
+      <div class="overlay-body" id="todos-body"></div>
     </div>
 
     <!-- 记一笔底部抽屉 -->

@@ -191,7 +191,7 @@ export function buildSummaryPrompt(
     `大额支出：${bigText}`,
     `收入来源：${incomesText}`,
     `估算笔数：${g.estimated_n}`,
-    `月预算：${g.budget} 元；本月已花 ${g.month_spent} 元；本月储蓄率 ${rateText}`,
+    `本月已花 ${g.month_spent} 元；本月储蓄率 ${rateText}`,
     prevText,
     `目标：${goalsText}`,
     `省下的钱：${winsText}`,

@@ -67,7 +67,7 @@ body.overlay-open { overflow: hidden; }
 }
 .sync-pill.dirty { color: var(--warn); border-color: var(--warn); }
 
-/* 五项核心数据 */
+/* 三项核心数据 */
 .stat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 12px; }
 .stat-card {
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md);
@@ -80,17 +80,6 @@ body.overlay-open { overflow: hidden; }
 }
 .stat-card.balance { grid-column: span 2; }
 .stat-card.balance .stat-value { font-size: 26px; }
-
-/* 预算提醒 */
-.budget-alert {
-  border-radius: var(--radius-md); padding: 12px 14px; margin-bottom: 12px; font-size: 13.5px;
-}
-.budget-alert.warn { background: #fdf3e2; border: 1px solid #f0cf9a; color: #9a6a1d; }
-.budget-alert.danger { background: #fbe9e7; border: 1px solid #f0b4ae; color: #a43730; }
-@media (prefers-color-scheme: dark) {
-  .budget-alert.warn { background: #33291a; border-color: #6b5426; color: #f0c77e; }
-  .budget-alert.danger { background: #33201d; border-color: #6e3b35; color: #f0a29b; }
-}
 
 /* 通用卡片/按钮 */
 .card {
@@ -279,3 +268,15 @@ textarea { min-height: 84px; resize: vertical; }
 .toast.show { opacity: 1; transform: none; }
 .toast-error { background: var(--danger); color: #fff; }
 .toast-success { background: var(--accent); color: #fff; }
+
+/* 待办与手机触控 */
+.manual-entry-button { margin-bottom: 12px; align-self: flex-start; }
+.todo-toolbar { margin-bottom: 14px; }
+.todo-title { margin-top: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.todo-check { display: flex; align-items: center; gap: 10px; min-height: 48px; border-bottom: 1px solid var(--line); }
+.todo-check:last-child { border-bottom: 0; }
+.todo-check input { width: 24px; height: 24px; min-height: 24px; flex-shrink: 0; accent-color: var(--accent); }
+.todo-check span { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }
+.btn:disabled { opacity: 0.45; cursor: default; }
+.insight-entries { flex-wrap: wrap; }
+#go-entry-todos { flex-basis: 100%; }

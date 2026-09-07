@@ -1,6 +1,17 @@
-/** SQLite schema v4（app/migrations.py BASE_SCHEMA 的移植，含共享同步与退款配对）。 */
+/** SQLite schema v5（含共享同步、退款配对与手机本地待办）。 */
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
+
+export const TODO_SCHEMA = `
+CREATE TABLE IF NOT EXISTS todos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  priority INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  completed_at TEXT NOT NULL DEFAULT ''
+);
+`;
 
 export const BASE_SCHEMA = `
 CREATE TABLE IF NOT EXISTS transactions (
