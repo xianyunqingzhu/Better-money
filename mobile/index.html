@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#F6F4EF" />
   <title>Better-money</title>
   <link rel="stylesheet" href="/src/styles.css" />
@@ -20,8 +20,10 @@
           </div>
         </header>
         <div class="scroll" id="home-scroll">
-          <div class="card">
-            <h3>待办事项<span class="muted small" id="home-todos-count"></span></h3>
+          <div class="card todo-spotlight">
+            <div class="todo-heading"><h3>待办事项 <span class="todo-count" id="home-todos-count"></span></h3>
+              <button class="btn todo-manage" id="home-manage-todos">管理</button></div>
+            <p class="todo-caption">一件一件来，把今天安排好</p>
             <div id="home-todos"></div>
           </div>
           <div class="stat-grid" id="stat-grid"></div>
@@ -78,9 +80,14 @@
       </section>
     </div>
 
+    <nav class="page-nav" aria-label="主页面">
+      <button type="button" data-page="page-home" class="page-tab active" aria-current="page">记账与待办</button>
+      <button type="button" data-page="page-insights" class="page-tab">分析与历史</button>
+    </nav>
+
     <div class="overlay hidden" id="overlay-todos">
       <div class="overlay-head">
-        <button class="btn ghost back-btn" data-close-overlay="overlay-todos">返回</button>
+        <button class="btn ghost back-btn" id="todos-back">返回</button>
         <h2 id="todos-title">待办事项</h2>
       </div>
       <div class="overlay-body" id="todos-body"></div>

@@ -19,6 +19,23 @@ beforeEach(async () => {
 });
 afterEach(() => db.close());
 
+it("deletes active and completed todos permanently without affecting the others", async () => {
+  const a = todos.create("删除未完成");
+  const b = todos.create("删除已完成");
+  const c = todos.create("保留");
+  todos.complete(b);
+  todos.remove(a);
+  todos.remove(b);
+  todos.remove(b);
+  todos.restore(b);
+  await db.save(storage);
+  db.close();
+  db = await AppDatabase.open(storage);
+  todos = new TodoRepo(db);
+  expect(todos.list().map(t => t.id)).toEqual([c]);
+  expect(todos.list(true)).toEqual([]);
+});
+
 it("creates, edits and orders todos without changing their identity", () => {
   const a = todos.create("  交电费  ");
   const b = todos.create("买菜");

@@ -164,7 +164,7 @@ export function renderSettings(ctx: App) {
   aboutGroup.append(el("h3", {}, ["版本与帮助"]));
   aboutGroup.append(
     el("p", { class: "muted small" }, [
-      "Better-money 1.1.3 · 手机端独立本地账本，不依赖云端。",
+      "Better-money 1.1.4 · 手机端独立本地账本，不依赖云端。",
     ]),
     el("p", { class: "muted small" }, [
       "GitHub Releases（APK 与 SHA-256 校验值）：",
@@ -471,7 +471,7 @@ async function createFullBackup(ctx: App, includeImages: boolean) {
     const manifest = {
       format: "better-money-backup-mobile",
       format_version: 1,
-      app_version: "1.1.3",
+      app_version: "1.1.4",
       schema_version: SCHEMA_VERSION,
       created_at: new Date().toISOString(),
       includes_images: includeImages,

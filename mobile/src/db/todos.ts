@@ -66,4 +66,8 @@ export class TodoRepo {
     this.db.run("UPDATE todos SET completed_at = '', priority = ?, updated_at = ? WHERE id = ? AND completed_at <> ''",
       [this.nextPriority(), new Date().toISOString(), id]);
   }
+
+  remove(id: number) {
+    this.db.run("DELETE FROM todos WHERE id = ?", [id]);
+  }
 }

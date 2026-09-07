@@ -10,7 +10,7 @@ import { openOverlayGoals } from "./ui/goals";
 import { openHistoryOverlay } from "./ui/insights";
 import { renderSummaries } from "./ui/summaries";
 import { openSettingsOverlay } from "./ui/settings";
-import { openTodos } from "./ui/todos";
+import { openTodos, backFromTodos } from "./ui/todos";
 import type { PickedImage } from "./platform/images";
 
 async function bootstrap() {
@@ -32,8 +32,20 @@ function bindEvents() {
   // 两页滑动
   const pages = $("#pages");
   pages.addEventListener("scroll", () => {
-    // 滑动到第二页后允许其内部滚动；页面本身不锁定
+    const active = pages.scrollLeft >= pages.clientWidth / 2 ? "page-insights" : "page-home";
+    document.querySelectorAll<HTMLButtonElement>("[data-page]").forEach(button => {
+      button.classList.toggle("active", button.dataset.page === active);
+      if (button.dataset.page === active) button.setAttribute("aria-current", "page");
+      else button.removeAttribute("aria-current");
+    });
   });
+  document.querySelectorAll<HTMLButtonElement>("[data-page]").forEach(button => {
+    button.addEventListener("click", () => {
+      pages.scrollTo({ left: button.dataset.page === "page-home" ? 0 : pages.clientWidth, behavior: "instant" });
+    });
+  });
+  $("#home-manage-todos").addEventListener("click", () => openTodos(app));
+  $("#todos-back").addEventListener("click", () => backFromTodos(app));
 
   // 手动记账
   $("#manual-entry-btn").addEventListener("click", () => openEntry(app));

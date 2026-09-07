@@ -45,54 +45,86 @@ export function fmtShort(value: number | string): string {
 
 let toastBox: HTMLElement | null = null;
 
-export function toast(message: string, type: "info" | "success" | "error" = "info") {
+export function toast(message: string, type: "info" | "success" | "error" = "info",
+  action?: { label: string; run: () => Promise<void> }) {
   if (!toastBox) {
     toastBox = el("div", { id: "toast-box" });
     document.body.append(toastBox);
   }
-  const node = el("div", { class: `toast toast-${type}` }, [message]);
-  toastBox.append(node);
-  requestAnimationFrame(() => node.classList.add("show"));
-  setTimeout(() => {
+  const node = el("div", { class: `toast toast-${type}`, role: "status" }, [el("span", {}, [message])]);
+  let timeout: ReturnType<typeof setTimeout>;
+  const dismiss = () => {
+    clearTimeout(timeout);
     node.classList.remove("show");
-    setTimeout(() => node.remove(), 250);
-  }, 2600);
+    setTimeout(() => node.remove(), 200);
+  };
+  if (action) {
+    const button = el("button", { class: "toast-action", type: "button" }, [action.label]);
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      clearTimeout(timeout);
+      try { await action.run(); dismiss(); }
+      catch { button.disabled = false; timeout = setTimeout(dismiss, 8000); }
+    });
+    node.append(button);
+  }
+  // 新提示替换旧提示，避免堆叠遮住操作区域。
+  toastBox.replaceChildren(node);
+  requestAnimationFrame(() => node.classList.add("show"));
+  timeout = setTimeout(dismiss, action ? 8000 : 3200);
 }
 
-export function confirmDialog(message: string): Promise<boolean> {
+export function confirmDialog(message: string, confirmLabel = "确认"): Promise<boolean> {
   return new Promise((resolve) => {
     const overlay = el("div", { class: "dialog-overlay" });
-    const box = el("div", { class: "dialog-box" });
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const box = el("div", { class: "dialog-box", role: "alertdialog", "aria-modal": "true", "aria-label": message });
     box.append(
       el("p", { class: "dialog-message" }, [message]),
       el("div", { class: "dialog-actions" }, [
         el("button", { class: "btn ghost", id: "dialog-cancel" }, ["取消"]),
-        el("button", { class: "btn danger", id: "dialog-ok" }, ["确认"]),
+        el("button", { class: "btn danger", id: "dialog-ok" }, [confirmLabel]),
       ]),
     );
     overlay.append(box);
     document.body.append(overlay);
-    $("#dialog-cancel", box).addEventListener("click", () => {
+    const finish = (accepted: boolean) => {
       overlay.remove();
-      resolve(false);
-    });
-    $("#dialog-ok", box).addEventListener("click", () => {
-      overlay.remove();
-      resolve(true);
+      previousFocus?.focus();
+      resolve(accepted);
+    };
+    $("#dialog-cancel", box).addEventListener("click", () => finish(false));
+    $("#dialog-ok", box).addEventListener("click", () => finish(true));
+    $("#dialog-cancel", box).focus();
+    box.addEventListener("keydown", event => {
+      if (event.key === "Escape") { event.preventDefault(); finish(false); }
+      if (event.key === "Tab") {
+        event.preventDefault();
+        const next = document.activeElement === $("#dialog-cancel", box) ? "#dialog-ok" : "#dialog-cancel";
+        $(next, box).focus();
+      }
     });
   });
 }
 
+const sheetTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
 export function openSheet(id: string) {
+  clearTimeout(sheetTimers.get(id));
+  sheetTimers.delete(id);
   const node = $(id);
+  node.dataset.closing = "false";
   node.classList.remove("hidden");
-  requestAnimationFrame(() => node.classList.add("open"));
+  requestAnimationFrame(() => { if (node.dataset.closing !== "true") node.classList.add("open"); });
 }
 
 export function closeSheet(id: string) {
   const node = $(id);
+  node.dataset.closing = "true";
   node.classList.remove("open");
-  setTimeout(() => node.classList.add("hidden"), 220);
+  clearTimeout(sheetTimers.get(id));
+  const delay = matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 220;
+  sheetTimers.set(id, setTimeout(() => { node.classList.add("hidden"); sheetTimers.delete(id); }, delay));
 }
 
 export function openOverlay(id: string) {
