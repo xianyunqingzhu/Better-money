@@ -34,6 +34,7 @@ export class App {
 
   async refreshAll() {
     if (!this.initialized) return;
+    this.month = todayIso().slice(0, 7);
     this.config = this.repo.getConfig();
     renderHome(this);
     renderInsights(this);

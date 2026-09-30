@@ -164,10 +164,10 @@ export function renderSettings(ctx: App) {
   aboutGroup.append(el("h3", {}, ["版本与帮助"]));
   aboutGroup.append(
     el("p", { class: "muted small" }, [
-      "Better-money 1.1.4 · 手机端独立本地账本，不依赖云端。",
+      "Better-money 1.1.5 · 手机端独立本地账本，不依赖云端。",
     ]),
     el("p", { class: "muted small" }, [
-      "GitHub Releases（APK 与 SHA-256 校验值）：",
+      "GitHub Releases（APK 下载）：",
       el("br"),
       el("a", { href: "https://github.com/xianyunqingzhu/Better-money/releases", target: "_blank", rel: "noopener" }, [
         "https://github.com/xianyunqingzhu/Better-money/releases",
@@ -471,7 +471,7 @@ async function createFullBackup(ctx: App, includeImages: boolean) {
     const manifest = {
       format: "better-money-backup-mobile",
       format_version: 1,
-      app_version: "1.1.4",
+      app_version: "1.1.5",
       schema_version: SCHEMA_VERSION,
       created_at: new Date().toISOString(),
       includes_images: includeImages,

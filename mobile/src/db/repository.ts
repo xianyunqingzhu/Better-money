@@ -135,6 +135,37 @@ export class LedgerRepo {
     );
   }
 
+  /** 先筛选再分页，避免旧月份被全局最近 1000 笔的上限截掉。 */
+  listTransactionsFiltered(
+    filters: { month?: string; type?: string; category?: string; keyword?: string },
+    limit = 100,
+    offset = 0,
+  ): TransactionRow[] {
+    const clauses = ["deleted_at = ''"];
+    const params: SqlValue[] = [];
+    if (filters.month) {
+      clauses.push("substr(date, 1, 7) = ?");
+      params.push(filters.month);
+    }
+    if (filters.type) {
+      clauses.push("type = ?");
+      params.push(filters.type);
+    }
+    if (filters.category) {
+      clauses.push("category = ?");
+      params.push(filters.category);
+    }
+    const keyword = filters.keyword?.trim();
+    if (keyword) {
+      clauses.push("(instr(merchant, ?) > 0 OR instr(note, ?) > 0 OR instr(category, ?) > 0)");
+      params.push(keyword, keyword, keyword);
+    }
+    return this.db.query<TransactionRow>(
+      `SELECT * FROM transactions WHERE ${clauses.join(" AND ")} ORDER BY date DESC, id DESC LIMIT ? OFFSET ?`,
+      [...params, limit, offset],
+    );
+  }
+
   addTransaction(tx: NewTransaction): { id: number; savings_allocations: { goal_id: number; goal_name: string; amount: number }[] } {
     const now = localNowSql();
     const result = this.db.transaction(() => {
@@ -197,28 +228,13 @@ export class LedgerRepo {
     }));
   }
 
-  /** 解析/确认面板批量入账（含查重、单品明细与退款配对），对应 _save_items。 */
+  /** 解析/确认面板批量入账（含单品明细与退款配对），对应 _save_items。 */
   saveItems(items: NewTransaction[], source = "文字") {
     const now = localNowSql();
     const deviceId = this.localDeviceId();
     const saved: { id: number; refund_paired?: RefundPairing }[] = [];
-    const skipped: { date: string; amount: number; merchant: string; reason: string }[] = [];
     this.db.transaction(() => {
       for (const item of items) {
-        const dup = this.db.queryOne<{ id: number }>(
-          `SELECT id FROM transactions
-           WHERE date = ? AND amount = ? AND merchant = ? AND type = ? AND deleted_at = ''`,
-          [item.date, item.amount, item.merchant ?? "", item.type],
-        );
-        if (dup) {
-          skipped.push({
-            date: item.date,
-            amount: item.amount,
-            merchant: item.merchant ?? "",
-            reason: "可能重复",
-          });
-          continue;
-        }
         let refundOf = "";
         if (item.type === "退款") {
           const explicit = item.refund_of ?? "";
@@ -270,7 +286,7 @@ export class LedgerRepo {
       }
     });
     for (const item of items) this.markSummariesExpired(item.date);
-    return { saved, skipped };
+    return { saved };
   }
 
   /** 退款配对候选：商家一致、可退余额足够、60 天内、最近日期优先。 */

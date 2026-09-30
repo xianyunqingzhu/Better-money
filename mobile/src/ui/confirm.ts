@@ -226,16 +226,25 @@ function renderConfirmPanel(
       app.toast("没有可入账的条目", "error");
       return;
     }
-    const result = ctx.repo.saveItems(collected, source);
-    await ctx.afterDataChange();
-    const pairedCount = result.saved.filter((s) => s.refund_paired).length;
-    app.toast(
-      pairedCount > 0
-        ? `已入账 ${collected.length} 笔，其中 ${pairedCount} 笔已配对修正原支出`
-        : `已入账 ${collected.length} 笔`,
-      "success",
-    );
-    closeSheet("#confirm-sheet");
+    const button = $("#confirm-save") as HTMLButtonElement;
+    button.disabled = true;
+    try {
+      const result = ctx.repo.saveItems(collected, source);
+      await ctx.afterDataChange();
+      const pairedCount = result.saved.filter((s) => s.refund_paired).length;
+      app.toast(
+        pairedCount > 0
+          ? `已入账 ${result.saved.length} 笔，其中 ${pairedCount} 笔已配对修正原支出`
+          : `已入账 ${result.saved.length} 笔`,
+        "success",
+      );
+      closeSheet("#confirm-sheet");
+    } catch (error) {
+      await ctx.reload();
+      app.toast(`保存失败：${error instanceof Error ? error.message : String(error)}`, "error");
+    } finally {
+      button.disabled = false;
+    }
   };
   saveBtn.replaceWith(saveBtn.cloneNode(true));
   $("#confirm-save").addEventListener("click", handler);

@@ -25,6 +25,7 @@ const CAT_COLORS = [
 ];
 
 let historyFilter = { month: "", type: "", category: "", keyword: "" };
+let historyVisible = 100;
 
 export function renderInsights(ctx: App) {
   const stats = statsForMonth(ctx.month, ctx.repo.allTransactions());
@@ -66,8 +67,7 @@ export function renderInsights(ctx: App) {
       el("span", { class: "cat-amount" }, [fmtShort(c.value)]),
     );
     row.addEventListener("click", () => {
-      historyFilter.category = c.name;
-      openHistoryOverlay(ctx);
+      openHistoryOverlay(ctx, c.name);
     });
     catList.append(row);
   });
@@ -119,7 +119,10 @@ export function renderInsights(ctx: App) {
   renderGoalProgress(ctx);
 }
 
-export function openHistoryOverlay(ctx: App) {
+export function openHistoryOverlay(ctx: App, category = "") {
+  historyFilter = { month: ctx.month, type: "", category, keyword: "" };
+  historyVisible = 100;
+  $("#history-filters").dataset.bound = "";
   $("#overlay-history").classList.remove("hidden");
   document.body.classList.add("overlay-open");
   renderHistory(ctx);
@@ -135,7 +138,7 @@ export function renderHistory(ctx: App) {
 
     const monthSel = el("select", { id: "hist-month" });
     monthSel.append(el("option", { value: "" }, ["全部月份"]));
-    for (const m of computeMonthList(ctx.repo.allTransactions())) {
+    for (const m of new Set([ctx.month, ...computeMonthList(ctx.repo.allTransactions())])) {
       monthSel.append(el("option", { value: m }, [m]));
     }
     const typeSel = el("select", { id: "hist-type" });
@@ -159,6 +162,7 @@ export function renderHistory(ctx: App) {
       node.value = historyFilter[key];
       node.addEventListener("input", () => {
         historyFilter[key] = node.value;
+        historyVisible = 100;
         renderHistory(ctx);
       });
     }
@@ -167,26 +171,24 @@ export function renderHistory(ctx: App) {
     historyFilter.month = monthSel.value;
   }
 
-  let rows = ctx.repo.listTransactions(1000);
-  if (historyFilter.month) rows = rows.filter((r) => r.date.startsWith(historyFilter.month));
-  if (historyFilter.type) rows = rows.filter((r) => r.type === historyFilter.type);
-  if (historyFilter.category) rows = rows.filter((r) => r.category === historyFilter.category);
-  if (historyFilter.keyword) {
-    const kw = historyFilter.keyword.trim();
-    if (kw) {
-      rows = rows.filter(
-        (r) => r.merchant.includes(kw) || r.note.includes(kw) || r.category.includes(kw),
-      );
-    }
-  }
+  const rows = ctx.repo.listTransactionsFiltered(historyFilter, historyVisible + 1);
+  const hasMore = rows.length > historyVisible;
 
   box.innerHTML = "";
   if (!rows.length) {
     box.innerHTML = '<div class="empty-state">没有符合条件的记录。</div>';
     return;
   }
-  for (const row of rows) {
+  for (const row of rows.slice(0, historyVisible)) {
     box.append(historyCard(ctx, row));
+  }
+  if (hasMore) {
+    const more = el("button", { class: "btn ghost", id: "history-more" }, ["加载更多记录"]);
+    more.addEventListener("click", () => {
+      historyVisible += 100;
+      renderHistory(ctx);
+    });
+    box.append(more);
   }
 }
 
